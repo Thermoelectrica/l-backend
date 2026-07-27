@@ -32,6 +32,7 @@ from app.routers import (
     plant_group,
     sticker_type,
     work_log,
+    sticker_installation,
 )
 
 # Initialize logging
@@ -146,3 +147,4 @@ app.include_router(inspection.router)
 app.include_router(defect.router)
 app.include_router(work_log.router)
 app.include_router(plant_group.router)
+app.include_router(sticker_installation.router)
