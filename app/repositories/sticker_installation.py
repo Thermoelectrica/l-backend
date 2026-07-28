@@ -12,7 +12,7 @@ from app.constants import DEFAULT_MODIFIED_SINCE
 from app.exceptions import ConcurrentModificationError
 from app.models import ConflictDetail, ConflictError
 from app.models.sticker_installation import (
-    StickerInstallaionListItem, 
+    StickerInstallaionListItem,
     StickerInstallationModel,
 )
 from app.utils.async_wrapper import AsyncWrapper
@@ -25,23 +25,23 @@ queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" el
 class StickerInstallationRepository:
     """Repository of Stickers methods"""
 
-    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> List[StickerInstallaionListItem]:
+    async def get_all(
+        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
+    ) -> List[StickerInstallaionListItem]:
         """Get all stickers, optionally filtered by modification date"""
-        
-        sticker_rows = [row async for row in queries.get_all_stickers(conn, modified_since=modified_since)] # type: ignore
+
+        sticker_rows = [row async for row in queries.get_all_stickers(conn, modified_since=modified_since)]  # type: ignore
         sticker_list = [StickerInstallaionListItem(**row) for row in sticker_rows]
         return sticker_list
 
-    
     async def get_by_id(self, conn, sticker_id: UUID) -> Optional[StickerInstallationModel]:
         """Get sticker by id"""
-        
+
         sticker_row = await queries.get_by_id(conn, id=sticker_id)
         if not sticker_row:
             return None
         return StickerInstallationModel(**sticker_row)
 
-    
     async def get_by_plant_id(
         self, conn, plant_id: UUID, modified_since: datetime = DEFAULT_MODIFIED_SINCE
     ) -> list[StickerInstallationModel]:
@@ -54,18 +54,26 @@ class StickerInstallationRepository:
         if not sticker_rows:
             return []
         return [StickerInstallationModel(**row) for row in sticker_rows]
-    
+
     async def save(self, conn, sticker: StickerInstallationModel, force: bool = False) -> StickerInstallationModel:
         """
         Save sticker to database
         """
 
         # Список полей, которые нельзя менять
-        immutable_fields = ["control_point_id", "inspector_id", "kind", "sticker_type_id", "sticker_color", "from_sticker_type_id", "count"]
+        immutable_fields = [
+            "control_point_id",
+            "inspector_id",
+            "kind",
+            "sticker_type_id",
+            "sticker_color",
+            "from_sticker_type_id",
+            "count",
+        ]
 
         # 1. Подготовить данные
         data = sticker.model_dump(exclude={"server_modified_at"})
-    
+
         # 2. Если kind/sticker_color — enum, распаковать .value
         if hasattr(sticker.kind, "value"):
             data["kind"] = sticker.kind.value
@@ -73,14 +81,14 @@ class StickerInstallationRepository:
             data["sticker_color"] = sticker.sticker_color.value
 
         # 3. Вставить данные в таблицу
-        await queries.upsert_sticker(conn, **data) # type: ignore
-        
+        await queries.upsert_sticker(conn, **data)  # type: ignore
+
         # 4. Получить сохранённую запись
         result = await queries.get_by_id(conn, id=sticker.id)
-        
+
         if not result:
             raise ValueError(f"Sticker {sticker.id} not found after save")
-        
+
         if result.get("id") == data.get("id"):
             # Сравнение
             for field in immutable_fields:
@@ -98,7 +106,7 @@ class StickerInstallationRepository:
                         raise ConcurrentModificationError(
                             ConflictError(
                                 message=f"Cannot modify sticker {sticker.id}",
-                                server_modified_at=result["server_modified_at"], # type: ignore
+                                server_modified_at=result["server_modified_at"],  # type: ignore
                                 conflicts=[
                                     ConflictDetail(
                                         field=f"{field}",
@@ -107,6 +115,5 @@ class StickerInstallationRepository:
                                 ],
                             )
                         )
-        
+
         return StickerInstallationModel(**result)
-    

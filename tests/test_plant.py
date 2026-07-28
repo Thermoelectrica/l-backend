@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 PUT_BODY_TEMPLATE = {
     "name": "Test Power Plant",
-    "group_id": None,
     "claimed_by_device_id": None,
     "claimed_by_user_id": None,
     "claimed_at": None,
@@ -39,20 +38,14 @@ def facility_id_3():
 
 
 @pytest.fixture
-def plant_group_id():
-    return uuid4()
-
-
-@pytest.fixture
-def plant_data(plant_id, facility_id_1, plant_group_id):
+def plant_data(plant_id, facility_id_1):
     data = deepcopy(PUT_BODY_TEMPLATE)
     data["id"] = str(plant_id)
-    data["plant_group_id"] = str(plant_group_id)
     data["facilities"][0]["id"] = str(facility_id_1)
     return data
 
 
-def test_create_plant(client: TestClient, plant_data, plant_id, facility_id_1, plant_group_id):
+def test_create_plant(client: TestClient, plant_data, plant_id, facility_id_1):
     """Test creating a new plant with facilities (server_modified_at ignored for new plants)"""
     response = client.put("/plant", json=plant_data)
     assert response.status_code == 200
@@ -60,13 +53,12 @@ def test_create_plant(client: TestClient, plant_data, plant_id, facility_id_1, p
     data = response.json()
     assert data["id"] == str(plant_id)
     assert data["name"] == "Test Power Plant"
-    assert data["plant_group_id"] == str(plant_group_id)
     assert len(data["facilities"]) == 1
     assert data["facilities"][0]["id"] == str(facility_id_1)
     assert "server_modified_at" in data
 
 
-def test_get_plant(client: TestClient, plant_data, plant_id, plant_group_id):
+def test_get_plant(client: TestClient, plant_data, plant_id):
     """Test retrieving a plant using new by_id endpoint"""
     client.put("/plant", json=plant_data)
 
@@ -77,7 +69,6 @@ def test_get_plant(client: TestClient, plant_data, plant_id, plant_group_id):
     data = response.json()
     assert data["id"] == str(plant_id)
     assert data["name"] == "Test Power Plant"
-    assert data["plant_group_id"] == str(plant_group_id)
     assert len(data["facilities"]) == 1
 
 
@@ -88,16 +79,14 @@ def test_get_nonexistent_plant(client: TestClient):
     assert response.status_code == 404
 
 
-def test_get_all_plants(client: TestClient, plant_data, plant_group_id):
+def test_get_all_plants(client: TestClient, plant_data):
     """Test retrieving all plants using new /all endpoint"""
     plant_id_2 = uuid4()
     facility_id_2 = uuid4()
-    plant_group_id_2 = uuid4()
 
     plant_data_2 = deepcopy(PUT_BODY_TEMPLATE)
     plant_data_2["id"] = str(plant_id_2)
     plant_data_2["name"] = "Plant Two"
-    plant_data_2["plant_group_id"] = str(plant_group_id_2)
     plant_data_2["facilities"][0]["id"] = str(facility_id_2)
 
     client.put("/plant", json=plant_data)
@@ -117,7 +106,7 @@ def test_get_all_plants(client: TestClient, plant_data, plant_group_id):
     assert str(plant_id_2) in plant_ids
 
 
-def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1, plant_group_id):
+def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1):
     """Test updating a plant with correct server_modified_at"""
     create_response = client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
@@ -126,7 +115,6 @@ def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, fac
     # Update with correct timestamp
     plant_data["server_modified_at"] = server_modified_at
     plant_data["name"] = "Updated Name"
-    plant_data["plant_group_id"] = str(plant_group_id)
     plant_data["facilities"][0]["name"] = "Updated Facility"
 
     response = client.put("/plant", json=plant_data)
@@ -134,7 +122,6 @@ def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, fac
 
     data = response.json()
     assert data["name"] == "Updated Name"
-    assert data["plant_group_id"] == str(plant_group_id)
     assert data["facilities"][0]["name"] == "Updated Facility"
     assert data["server_modified_at"] != server_modified_at  # Should be updated
 
@@ -276,17 +263,15 @@ def test_release_plant(client: TestClient, plant_data, plant_id):
     assert data["claimed_at"] is None
 
 
-def test_facility_transfer_not_allowed(client: TestClient, plant_data, facility_id_1, plant_group_id):
+def test_facility_transfer_not_allowed(client: TestClient, plant_data, facility_id_1):
     """Test that transferring a facility from one plant to another is not allowed (never allow stealing)"""
     client.put("/plant", json=plant_data)
 
     # Try to create second plant and "steal" the facility
     plant_id_2 = uuid4()
-    plant_group_id_2 = uuid4()
     plant_data_2 = deepcopy(PUT_BODY_TEMPLATE)
     plant_data_2["id"] = str(plant_id_2)
     plant_data_2["name"] = "Plant Two"
-    plant_data_2["plant_group_id"] = str(plant_group_id_2)
     plant_data_2["facilities"][0]["id"] = str(facility_id_1)  # Same facility ID from plant 1
 
     # This should fail with 400 error (stealing never allowed, even with force=true)
@@ -310,7 +295,7 @@ def test_force_mode_ignores_timestamp(client: TestClient, plant_data):
     assert data["name"] == "Updated Name"
 
 
-def test_is_deleted_honored_for_plant(client: TestClient, plant_data, plant_group_id):
+def test_is_deleted_honored_for_plant(client: TestClient, plant_data):
     """Test that is_deleted value is honored for plants"""
     plant_data["name"] = "Deleted Plant"
     plant_data["is_deleted"] = True
@@ -321,7 +306,6 @@ def test_is_deleted_honored_for_plant(client: TestClient, plant_data, plant_grou
 
     data = response.json()
     assert data["is_deleted"] is True
-    assert data["plant_group_id"] == str(plant_group_id)
 
     # Verify by retrieving
     get_response = client.get(f"/plant/by_id/{plant_data['id']}")
@@ -329,7 +313,7 @@ def test_is_deleted_honored_for_plant(client: TestClient, plant_data, plant_grou
     assert get_response.json()["is_deleted"] is True
 
 
-def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facility_id_2, plant_group_id):
+def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facility_id_2):
     """Test that is_deleted value is honored for facilities"""
     # Add second facility marked as deleted
     plant_data["facilities"].append(
@@ -376,10 +360,7 @@ def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facilit
     assert facility_2_retrieved["is_deleted"] is True
 
 
-# NEW TESTS - Missing test cases 1-6
-
-
-def test_child_aggregate_ids_in_get_response(client: TestClient, plant_data, plant_id, facility_id_1, plant_group_id):
+def test_child_aggregate_ids_in_get_response(client: TestClient, plant_data, plant_id, facility_id_1):
     """Test #1: GET response includes child aggregate IDs (equipment_ids)"""
     # Create plant with facility
     client.put("/plant", json=plant_data)
@@ -440,7 +421,6 @@ def test_mismatched_child_ids_rejection(
     facility_id_1,
     facility_id_2,
     facility_id_3,
-    plant_group_id,
 ):
     """Test #2: Reject when server and client have same count but different IDs"""
     # Create plant with 3 facilities [A, B, C]
@@ -469,7 +449,7 @@ def test_mismatched_child_ids_rejection(
     assert str(facility_id_3) in error_data["extra_child_ids"]
 
 
-def test_deleted_children_persist_through_updates(client: TestClient, plant_data, facility_id_2, plant_group_id):
+def test_deleted_children_persist_through_updates(client: TestClient, plant_data, facility_id_2):
     """Test #3: Deleted children remain in GET response after updates"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
@@ -510,11 +490,9 @@ def test_force_mode_with_stealing_attempt(client: TestClient, plant_data, facili
 
     # Try to steal facility with force=true
     plant_id_2 = uuid4()
-    plant_group_id_2 = uuid4()
     plant_data_2 = deepcopy(PUT_BODY_TEMPLATE)
     plant_data_2["id"] = str(plant_id_2)
     plant_data_2["name"] = "Plant Two"
-    plant_data_2["plant_group_id"] = str(plant_group_id_2)
     plant_data_2["facilities"][0]["id"] = str(facility_id_1)
 
     response = client.put("/plant?force=true", json=plant_data_2)
@@ -615,7 +593,7 @@ def test_multiple_facility_operations_in_single_request(
 # Tests for modified_since filter
 
 
-def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_data, plant_group_id):
+def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_data):
     """Test filtering plants by modified_since parameter"""
 
     # Create first plant
@@ -633,11 +611,9 @@ def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_dat
 
     plant_id_2 = uuid4()
     facility_id_2 = uuid4()
-    plant_group_id_2 = uuid4()
     plant_data_2 = deepcopy(PUT_BODY_TEMPLATE)
     plant_data_2["id"] = str(plant_id_2)
     plant_data_2["name"] = "Plant Two"
-    plant_data_2["plant_group_id"] = str(plant_group_id_2)
     plant_data_2["facilities"][0]["id"] = str(facility_id_2)
     response2 = client.put("/plant", json=plant_data_2)
     assert response2.status_code == 200

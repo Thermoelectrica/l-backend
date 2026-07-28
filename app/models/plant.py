@@ -24,7 +24,6 @@ class Plant(BaseModel):
     """Plant aggregate with facilities - read model"""
 
     id: UUID
-    plant_group_id: Optional[UUID] = None
     name: str
     claimed_by_device_id: Optional[str] = None
     claimed_by_user_id: Optional[int] = None
@@ -48,7 +47,6 @@ class PlantListItem(BaseModel):
     """Lightweight plant item for list view"""
 
     id: UUID
-    plant_group_id: Optional[UUID] = None
     name: str
     claimed_by_device_id: Optional[str] = None
     claimed_by_user_id: Optional[int] = None

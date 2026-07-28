@@ -1,15 +1,15 @@
 -- name: get_by_id(id)^
 -- Get plant by ID
-SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at, plant_group_id
+SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at
 FROM lesiv.plant
 WHERE id = :id;
 
 -- name: get_by_id_with_username(id)^
 -- Get plant by ID with username of user who claimed it
-SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at, p.plant_group_id,
-       i.username as claimed_by_username
+SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at,
+    i.username as claimed_by_username
 FROM lesiv.plant p
-LEFT JOIN lesiv.inspector i ON p.claimed_by_user_id = i.id
+    LEFT JOIN lesiv.inspector i ON p.claimed_by_user_id = i.id
 WHERE p.id = :id;
 
 -- name: get_facilities(plant_id)
@@ -40,17 +40,16 @@ WHERE id = :facility_id;
 -- name: get_all_plants(modified_since)
 -- Get all plants (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return plants modified after that timestamp
-SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at, plant_group_id
+SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at
 FROM lesiv.plant
 WHERE server_modified_at > :modified_since
 ORDER BY server_modified_at;
 
--- name: upsert_plant(id, plant_group_id, name, is_deleted, server_modified_at)!
+-- name: upsert_plant(id, name, is_deleted, server_modified_at)!
 -- Insert or update plant (claim fields are managed separately via claim/release endpoints)
-INSERT INTO lesiv.plant (id, plant_group_id, name, is_deleted, server_modified_at)
-VALUES (:id, :plant_group_id, :name, :is_deleted, :server_modified_at)
+INSERT INTO lesiv.plant (id, name, is_deleted, server_modified_at)
+VALUES (:id, :name, :is_deleted, :server_modified_at)
 ON CONFLICT (id) DO UPDATE SET
-    plant_group_id = EXCLUDED.plant_group_id,
     name = EXCLUDED.name,
     is_deleted = EXCLUDED.is_deleted,
     server_modified_at = EXCLUDED.server_modified_at;
