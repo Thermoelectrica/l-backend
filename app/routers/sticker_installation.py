@@ -31,7 +31,7 @@ async def get_all_stickers(
     conn=Depends(get_db_connection),
     permission_service: PermissionService = Depends(get_permission_service),
 ):
-    """Get list of all stickers from DB """
+    """Get list of all stickers from DB"""
 
     all_stickers = await sticker_installation_repo.get_all(conn, modified_since=modified_since)
     return StickerInstallaionListResponse(items=all_stickers)
@@ -83,7 +83,8 @@ async def upsert_sticker(
 
     Rules:
     - force=false (default):
-      - Validates that no immutable fields (e.g., inspector_id, control_point_id, kind, etc.) have changed for existing sticker
+      - Validates that no immutable fields (e.g., inspector_id, control_point_id, kind, etc.)
+        have changed for existing sticker
       - Rejects if such change is detected → returns 409 Conflict
       - Allows insert of new sticker with new id (no validation needed)
     - force=true:
@@ -98,14 +99,14 @@ async def upsert_sticker(
             permission_service.require_access_level(AccessLevel.INSPECT)
 
             # Check plant access via inspection
-            plant_id = await permission_service.get_plant_id_from_inspector(sticker.inspector_id) # type: ignore
+            plant_id = await permission_service.get_plant_id_from_inspector(sticker.inspector_id)  # type: ignore
             if plant_id:
                 await permission_service.require_plant_access(plant_id)
 
             # Validate ownership before saving
             # development Не совсе понял, нужно ли тут что-то делать....
-            #await ownership_validator.validate_inspection_ownership(sticker.inspector_id) # type: ignore
-            
+            # await ownership_validator.validate_inspection_ownership(sticker.inspector_id) # type: ignore
+
             result = await sticker_installation_repo.save(conn, sticker, force=force)
         return result
     except ConcurrentModificationError as e:

@@ -30,9 +30,9 @@ from app.routers import (
     log,
     plant,
     plant_group,
+    sticker_installation,
     sticker_type,
     work_log,
-    sticker_installation,
 )
 
 # Initialize logging
