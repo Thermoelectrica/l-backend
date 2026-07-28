@@ -1,6 +1,7 @@
-"""Group repository with hierarchical structure and plant synchronization"""
+"""Group repository with hierarchical structure and plant membership synchronization"""
 
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -23,13 +24,16 @@ queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" el
 
 
 class PlantGroupRepository:
-    """Repository for Group aggregate"""
+    """Repository for PlantGroup aggregate with plant membership synchronization"""
 
     async def get_by_id(self, conn, group_id: UUID) -> Optional[PlantGroup]:
-        """Get group by ID"""
+        """Get group by ID including its plant_ids"""
         group_row = await queries.get_by_id(conn, id=group_id)
         if not group_row:
             return None
+
+        plant_id_rows = [row async for row in queries.get_plant_ids_by_group(conn, plant_group_id=group_id)]
+        plant_ids = [row["plant_id"] for row in plant_id_rows]
 
         return PlantGroup(
             id=group_row["id"],
@@ -37,26 +41,47 @@ class PlantGroupRepository:
             parent_id=group_row["parent_id"],
             is_deleted=group_row["is_deleted"],
             server_modified_at=group_row["server_modified_at"],
+            plant_ids=plant_ids,
         )
 
     async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> PlantGroupListResponse:
-        """Get all groups as lightweight list, optionally filtered by modification date"""
+        """Get all groups as list with plant_ids, optionally filtered by modification date.
+
+        Loads all memberships in a single query to avoid N+1.
+        """
         group_rows = [row async for row in queries.get_all_groups(conn, modified_since=modified_since)]
-        groups = [PlantGroup(**row) for row in group_rows]
+
+        # Load all memberships in one query and group by plant_group_id
+        membership_rows = [row async for row in queries.get_all_memberships(conn)]
+        memberships: dict[UUID, list[UUID]] = defaultdict(list)
+        for row in membership_rows:
+            memberships[row["plant_group_id"]].append(row["plant_id"])
+
+        groups = [
+            PlantGroup(
+                **row,
+                plant_ids=memberships.get(row["id"], []),
+            )
+            for row in group_rows
+        ]
         return PlantGroupListResponse(items=groups)
 
-    async def save(self, conn, group: PlantGroup, force: bool = False) -> PlantGroup:
-        """Save group with conflict detection.
+    async def save(self, conn, group: PlantGroup, force: bool = False, move_plants: bool = False) -> PlantGroup:
+        """Save group with conflict detection and plant membership synchronization.
         Must be called within a transaction.
 
         Args:
             conn: Database connection
             group: Group data to save
             force: If True, ignore server_modified_at validation
+            move_plants: If True, allow moving plants that already belong to another group.
+                         If False (default), raises ValueError if any plant_id in group.plant_ids
+                         already belongs to a different group.
 
         Raises:
             ConcurrentModificationError: If concurrent modification detected (force=False)
             ValueError: If group structure is invalid (self-reference or cyclic dependency)
+            ValueError: If a plant already belongs to another group and move_plants=False
         """
         id = group.id
         current = await self.get_by_id(conn, id)
@@ -87,11 +112,54 @@ class PlantGroupRepository:
             server_modified_at=new_server_modified_at,
         )
 
+        # Sync plant membership
+        await self._sync_plant_ids(conn, id, group.plant_ids, move_plants=move_plants)
+
         result = await self.get_by_id(conn, id)
         if result is None:
             raise ValueError(f"Group {id} not found after save")
 
         return result
+
+    async def _sync_plant_ids(self, conn, group_id: UUID, incoming_plant_ids: list[UUID], move_plants: bool) -> None:
+        """Synchronize plant membership for a group.
+
+        Args:
+            conn: Database connection
+            group_id: The group being updated
+            incoming_plant_ids: The desired list of plant_ids for this group
+            move_plants: If True, plants belonging to another group are moved here.
+                         If False, raises ValueError if any plant already belongs to another group.
+        """
+        # Get current membership for this group
+        current_rows = [row async for row in queries.get_plant_ids_by_group(conn, plant_group_id=group_id)]
+        current_ids = {row["plant_id"] for row in current_rows}
+        incoming_ids = set(incoming_plant_ids)
+
+        to_add = incoming_ids - current_ids
+        to_remove = current_ids - incoming_ids
+
+        # Check for plants that belong to a different group
+        for plant_id in to_add:
+            existing_row = await queries.get_group_id_by_plant(conn, plant_id=plant_id)
+            if existing_row is not None:
+                existing_group_id = existing_row["plant_group_id"]
+                if existing_group_id != group_id:
+                    if not move_plants:
+                        raise ValueError(
+                            f"Plant {plant_id} already belongs to group {existing_group_id}. "
+                            "Use move_plants=true to move it to this group."
+                        )
+                    # move_plants=True: remove from current group first
+                    await queries.delete_membership_by_plant(conn, plant_id=plant_id)
+
+        # Remove plants no longer in this group
+        for plant_id in to_remove:
+            await queries.delete_membership_by_plant(conn, plant_id=plant_id)
+
+        # Add new plants
+        for plant_id in to_add:
+            await queries.upsert_membership(conn, plant_id=plant_id, plant_group_id=group_id)
 
     async def _check_cyclic_dependency(self, conn, group_id: UUID, new_parent_id: UUID) -> bool:
         """Check if moving a group to a new parent would create a cyclic dependency.

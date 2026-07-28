@@ -44,11 +44,18 @@ async def upsert_group(
         default=False,
         description="If true, ignore server_modified_at and force update",
     ),
+    move_plants: bool = Query(
+        default=False,
+        description=(
+            "If true, plants listed in plant_ids that already belong to another group "
+            "will be moved to this group. If false (default), such plants cause a 400 error."
+        ),
+    ),
     conn=Depends(get_db_connection),
     permission_service: PermissionService = Depends(get_permission_service),
 ) -> PlantGroup:
     """
-    Create or replace group.
+    Create or replace group with plant membership.
 
     Rules:
     - force=false (default):
@@ -58,13 +65,17 @@ async def upsert_group(
     - force=true:
       - Ignores server_modified_at validation
       - Forces update even if concurrent modification detected
+    - move_plants=false (default):
+      - Rejects if any plant_id in the request already belongs to a different group (400)
+    - move_plants=true:
+      - Plants belonging to another group are moved to this group
     - Prevents cyclic dependencies when moving groups
     - Permission: User must have MODIFY access
     """
     try:
         async with conn.transaction():
             permission_service.require_access_level(AccessLevel.MODIFY)
-            result = await plant_group_repo.save(conn, group, force=force)
+            result = await plant_group_repo.save(conn, group, force=force, move_plants=move_plants)
 
         return result
 
