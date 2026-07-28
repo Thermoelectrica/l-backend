@@ -19,6 +19,9 @@ GRANT USAGE ON TYPE lesiv.step_status TO l_app_role;
 GRANT USAGE ON TYPE lesiv.access_level TO l_app_role;
 -- Added in V8__add_upload_status_to_image.sql
 GRANT USAGE ON TYPE lesiv.image_upload_status TO l_app_role;
+-- Added in V11_sticker_installation.sql
+GRANT USAGE ON TYPE lesiv.sticker_event_kind TO l_app_role;
+GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
 
 -- ============================================================================
 -- Plant permissions
@@ -134,6 +137,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON lesiv.image TO l_app_role;
 -- image: SELECT, INSERT, UPDATE, DELETE (full CRUD including hard delete)
 GRANT SELECT, INSERT, UPDATE, DELETE ON lesiv.work_log TO l_app_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON lesiv.work_log_inspector TO l_app_role;
+
+-- ============================================================================
+-- Sticker Installation Aggregate
+-- ============================================================================
+
+-- plant_group: SELECT, INSERT, UPDATE
+GRANT SELECT, INSERT, UPDATE ON lesiv.sticker_installation TO l_app_role;
 
 
 -- ============================================================================
