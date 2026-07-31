@@ -1,20 +1,23 @@
 """Permission service for plant access and access level control"""
 
-from uuid import UUID
-from typing import Optional
 import logging
-from fastapi import HTTPException, status
-import asyncpg
+from typing import Optional
+from uuid import UUID
+
 import aiosql
+import asyncpg
+from aiosql.queries import Queries
+from fastapi import HTTPException, status
+
 from app.config import settings
+from app.models.inspector import AccessLevel, Inspector
 from app.utils.async_wrapper import AsyncWrapper
-from app.models.inspector import Inspector, AccessLevel
 
 logger = logging.getLogger(__name__)
 
 # Load SQL queries
 _queries = aiosql.from_path("app/queries/permission.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 # Access level hierarchy for comparison
@@ -56,10 +59,8 @@ class PermissionService:
         if self.current_user.id == -1:
             return True
 
-        result = await queries.check_plant_access(
-            self.conn, inspector_id=self.current_user.id, plant_id=plant_id
-        )
-        return result["has_access"]
+        result = await queries.check_plant_access(self.conn, inspector_id=self.current_user.id, plant_id=plant_id)
+        return result["has_access"] if result else False
 
     async def require_plant_access(self, plant_id: UUID) -> None:
         """
@@ -73,9 +74,7 @@ class PermissionService:
             HTTPException: 403 if user lacks access to the plant
         """
         if not await self.check_plant_access(plant_id):
-            logger.warning(
-                f"Access denied: inspector {self.current_user.id} attempted to access plant {plant_id}"
-            )
+            logger.warning(f"Access denied: inspector {self.current_user.id} attempted to access plant {plant_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"You do not have access to plant {plant_id}",
@@ -93,9 +92,7 @@ class PermissionService:
             return set()  # Empty set means "all plants" for anonymous user
 
         rows = []
-        async for row in queries.get_accessible_plants(
-            self.conn, inspector_id=self.current_user.id
-        ):
+        async for row in queries.get_accessible_plants(self.conn, inspector_id=self.current_user.id):
             rows.append(row)
         return {row["plant_id"] for row in rows}
 
@@ -126,14 +123,23 @@ class PermissionService:
         Returns:
             UUID of the plant, or None if not found
         """
-        result = await queries.get_plant_from_equipment(
-            self.conn, equipment_id=equipment_id
-        )
+        result = await queries.get_plant_from_equipment(self.conn, equipment_id=equipment_id)
         return result["plant_id"] if result else None
 
-    async def get_plant_id_from_inspection(
-        self, inspection_id: UUID
-    ) -> Optional[UUID]:
+    async def get_plant_id_from_inspector(self, inspector_id: UUID) -> Optional[UUID]:
+        """
+        Get plant_id from inspector_id.
+
+        Args:
+            inspector_id: UUID of the inspection
+
+        Returns:
+            UUID of the plant, or None if not found
+        """
+        result = await queries.get_plant_from_inspector(self.conn, inspector_id=inspector_id)  # type: ignore
+        return result["plant_id"] if result else None
+
+    async def get_plant_id_from_inspection(self, inspection_id: UUID) -> Optional[UUID]:
         """
         Get plant_id from inspection_id.
 
@@ -143,9 +149,7 @@ class PermissionService:
         Returns:
             UUID of the plant, or None if not found
         """
-        result = await queries.get_plant_from_inspection(
-            self.conn, inspection_id=inspection_id
-        )
+        result = await queries.get_plant_from_inspection(self.conn, inspection_id=inspection_id)
         return result["plant_id"] if result else None
 
     async def get_plant_id_from_defect(self, defect_id: UUID) -> Optional[UUID]:
@@ -201,9 +205,7 @@ class PermissionService:
         if self.current_user.id == -1:
             return True
 
-        user_level = ACCESS_LEVEL_HIERARCHY.get(
-            self.current_user.access_level, 0
-        )
+        user_level = ACCESS_LEVEL_HIERARCHY.get(self.current_user.access_level, 0)
         required_level_value = ACCESS_LEVEL_HIERARCHY.get(required_level, 0)
 
         return user_level >= required_level_value
@@ -226,7 +228,8 @@ class PermissionService:
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access level {required_level.value} required. Your level: {self.current_user.access_level.value}",
+                detail=f"Access level {required_level.value} required."
+                f" Your level: {self.current_user.access_level.value}",
             )
 
     async def grant_plant_access(self, plant_id: UUID) -> None:
@@ -244,9 +247,5 @@ class PermissionService:
         if self.current_user.id == -1:
             return
 
-        await queries.grant_plant_access(
-            self.conn, inspector_id=self.current_user.id, plant_id=plant_id
-        )
-        logger.info(
-            f"Granted plant access: inspector {self.current_user.id} -> plant {plant_id}"
-        )
+        await queries.grant_plant_access(self.conn, inspector_id=self.current_user.id, plant_id=plant_id)
+        logger.info(f"Granted plant access: inspector {self.current_user.id} -> plant {plant_id}")

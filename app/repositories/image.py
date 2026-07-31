@@ -1,21 +1,24 @@
 """Image repository"""
 
+import json
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timezone
-import json
+
 import aiosql
+from aiosql.queries import Queries
+
 from app.config import settings
-from app.utils.async_wrapper import AsyncWrapper
 from app.constants import DEFAULT_MODIFIED_SINCE
-from app.models.image import Image, ImageUploadStatus
-from app.models import ConflictError, ConflictDetail
 from app.exceptions import ConcurrentModificationError
+from app.models import ConflictDetail, ConflictError
+from app.models.image import Image, ImageUploadStatus
+from app.utils.async_wrapper import AsyncWrapper
 from app.utils.datetime_utils import truncate_to_milliseconds
 
 # Load queries from single file
 _queries = aiosql.from_path("app/queries/image.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class ImageRepository:
@@ -36,12 +39,7 @@ class ImageRepository:
         self, conn, plant_id: UUID, modified_since: datetime = DEFAULT_MODIFIED_SINCE
     ) -> list[Image]:
         """Get all images for a plant (joins through equipment and facility)"""
-        rows = [
-            row
-            async for row in queries.get_by_plant_id(
-                conn, plant_id=plant_id, modified_since=modified_since
-            )
-        ]
+        rows = [row async for row in queries.get_by_plant_id(conn, plant_id=plant_id, modified_since=modified_since)]
         images = []
         for row in rows:
             row_dict = dict(row)
@@ -94,9 +92,9 @@ class ImageRepository:
                     )
                 )
 
-            if truncate_to_milliseconds(
-                image.server_modified_at
-            ) != truncate_to_milliseconds(current.server_modified_at):
+            if truncate_to_milliseconds(image.server_modified_at) != truncate_to_milliseconds(
+                current.server_modified_at
+            ):
                 raise ConcurrentModificationError(
                     ConflictError(
                         message="Image was modified by another client",

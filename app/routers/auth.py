@@ -1,19 +1,20 @@
 """Authentication router"""
 
 from typing import Annotated
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+
 import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.database import get_db_connection
+from app.dependencies.auth import get_current_user
 from app.models.auth import (
     LoginRequest,
-    TokenResponse,
-    RefreshRequest,
     PasswordChangeRequest,
+    RefreshRequest,
+    TokenResponse,
 )
 from app.models.inspector import Inspector
 from app.services.auth import AuthService
-from app.database import get_db_connection
-from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 auth_service = AuthService()
@@ -77,9 +78,7 @@ async def refresh(
     Raises:
         HTTPException: 401 if refresh token is invalid, expired, or revoked
     """
-    result = await auth_service.refresh(
-        conn, refresh_token_string=request.refresh_token
-    )
+    result = await auth_service.refresh(conn, refresh_token_string=request.refresh_token)
 
     if result is None:
         raise HTTPException(

@@ -7,9 +7,9 @@ WHERE id = :id;
 -- name: get_by_id_with_username(id)^
 -- Get plant by ID with username of user who claimed it
 SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at,
-       i.username as claimed_by_username
+    i.username as claimed_by_username
 FROM lesiv.plant p
-LEFT JOIN lesiv.inspector i ON p.claimed_by_user_id = i.id
+    LEFT JOIN lesiv.inspector i ON p.claimed_by_user_id = i.id
 WHERE p.id = :id;
 
 -- name: get_facilities(plant_id)

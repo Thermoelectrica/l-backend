@@ -1,8 +1,7 @@
 """Wrapper to make sync objects work with async syntax"""
 
-from typing import Any
 from contextlib import asynccontextmanager
-import inspect
+from typing import Any
 
 
 class AsyncIteratorWrapper:
@@ -82,12 +81,10 @@ class _AsyncCallableWrapper:
 
         async def _execute():
             # Call the sync function
-            result = self._sync_callable(*self._args, **self._kwargs)
+            result = self._sync_callable(*self._args, **self._kwargs)  # type: ignore
 
             # If result is an iterator/generator, wrap it for async iteration
-            if hasattr(result, "__iter__") and not isinstance(
-                result, (str, bytes, dict, list, tuple)
-            ):
+            if hasattr(result, "__iter__") and not isinstance(result, (str, bytes, dict, list, tuple)):
                 return AsyncIteratorWrapper(result)
 
             return result
@@ -97,12 +94,10 @@ class _AsyncCallableWrapper:
     def __aiter__(self):
         """Make this directly iterable with async for"""
         # Call the sync function immediately
-        result = self._sync_callable(*self._args, **self._kwargs)
+        result = self._sync_callable(*self._args, **self._kwargs)  # type: ignore
 
         # Wrap the result as an async iterator
-        if hasattr(result, "__iter__") and not isinstance(
-            result, (str, bytes, dict, list, tuple)
-        ):
+        if hasattr(result, "__iter__") and not isinstance(result, (str, bytes, dict, list, tuple)):
             return AsyncIteratorWrapper(result)
 
         # If it's not iterable, raise an error

@@ -62,3 +62,7 @@ db/flyway.conf
 
 backend.zip
 .env.test
+
+# local development files
+entrypoint.py
+install-flyway.sh

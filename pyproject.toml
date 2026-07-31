@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+exclude = ["stubs", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

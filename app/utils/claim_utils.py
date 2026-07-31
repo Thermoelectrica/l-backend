@@ -1,7 +1,7 @@
 """Utility functions for plant claim management"""
 
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
-from datetime import datetime, timezone, time, timedelta
 
 
 def is_claim_stale(claimed_at: Optional[datetime]) -> bool:
@@ -25,23 +25,14 @@ def is_claim_stale(claimed_at: Optional[datetime]) -> bool:
     if claimed_at.tzinfo is None:
         claimed_at = claimed_at.replace(tzinfo=timezone.utc)
 
-    # Calculate the most recent 3:00 AM Moscow time (00:00 AM UTC)
+    # Calculate today's 3:00 AM Moscow time (00:00 UTC)
     # Moscow is UTC+3, so 3:00 AM Moscow = 00:00 UTC
-    today_3am_moscow_utc = datetime.combine(
-        now_utc.date(), time(0, 0), tzinfo=timezone.utc
-    )
+    today_3am_moscow_utc = datetime.combine(now_utc.date(), time(0, 0), tzinfo=timezone.utc)
 
-    # If current time is before today's 3:00 AM Moscow, use yesterday's 3:00 AM
-    if now_utc < today_3am_moscow_utc:
-        expiration_time = today_3am_moscow_utc
-    else:
-        # Current time is after today's 3:00 AM, so next expiration is tomorrow's 3:00 AM
-        expiration_time = today_3am_moscow_utc + timedelta(days=1)
-
-    # Find the last 3:00 AM that occurred after the claim
+    # Find the last 3:00 AM that has already passed
     last_3am = today_3am_moscow_utc
     if now_utc < today_3am_moscow_utc:
         last_3am = today_3am_moscow_utc - timedelta(days=1)
 
-    # Claim is expired if the last 3:00 AM occurred after the claim time
+    # Claim is stale if the last 3:00 AM occurred after the claim time
     return claimed_at < last_3am

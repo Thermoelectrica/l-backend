@@ -1,37 +1,39 @@
 """FastAPI application entry point"""
 
-from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
+import logging
 from contextlib import asynccontextmanager
+
 import asyncpg
 import psycopg2
-from app.database import init_db_pool, close_db_pool
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+
+from app.config import settings
+from app.database import close_db_pool, init_db_pool
 from app.exceptions import (
     asyncpg_exception_handler,
     psycopg2_exception_handler,
     validation_exception_handler,
 )
-from app.middleware.auth import AuthMiddleware
 from app.logging_config import setup_logging
-from app.config import settings
-import logging
-
+from app.middleware.auth import AuthMiddleware
 from app.routers import (
     auth,
-    inspector,
-    image,
-    log,
-    sticker_type,
+    defect,
+    defect_type,
+    equipment,
     equipment_type,
     facility_template,
-    defect_type,
-    plant,
-    equipment,
+    image,
     inspection,
-    defect,
-    work_log
+    inspector,
+    log,
+    plant,
+    plant_group,
+    sticker_installation,
+    sticker_type,
+    work_log,
 )
-
 
 # Initialize logging
 setup_logging(log_level=settings.log_level, enable_json=settings.log_json)
@@ -89,8 +91,11 @@ def custom_openapi():
             "type": "apiKey",
             "in": "header",
             "name": "X-Auth-Token",
-            "description": "Enter 'Bearer <token>' or just '<token>' (works in Yandex Cloud where Authorization header is stripped)",
-        }
+            "description": (
+                "Enter 'Bearer <token>' or just '<token>'"
+                " (works in Yandex Cloud where Authorization header is stripped)"
+            ),
+        },
     }
 
     # Apply security globally to all operations except public paths
@@ -104,10 +109,7 @@ def custom_openapi():
         # Allow either HTTPBearer OR X-Auth-Token
         for method in path_item.values():
             if isinstance(method, dict) and "security" not in method:
-                method["security"] = [
-                    {"HTTPBearer": []},
-                    {"X-Auth-Token": []}
-                ]
+                method["security"] = [{"HTTPBearer": []}, {"X-Auth-Token": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -116,9 +118,9 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # Register exception handlers for both database drivers
-app.add_exception_handler(asyncpg.PostgresError, asyncpg_exception_handler)
-app.add_exception_handler(psycopg2.Error, psycopg2_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(asyncpg.PostgresError, asyncpg_exception_handler)  # pyright: ignore[reportArgumentType]
+app.add_exception_handler(psycopg2.Error, psycopg2_exception_handler)  # pyright: ignore[reportArgumentType]
+app.add_exception_handler(RequestValidationError, validation_exception_handler)  # pyright: ignore[reportArgumentType]
 
 
 # Register authentication middleware (applies to all routes except /auth)
@@ -144,3 +146,5 @@ app.include_router(equipment.router)
 app.include_router(inspection.router)
 app.include_router(defect.router)
 app.include_router(work_log.router)
+app.include_router(plant_group.router)
+app.include_router(sticker_installation.router)

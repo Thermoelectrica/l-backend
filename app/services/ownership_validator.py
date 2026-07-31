@@ -1,22 +1,21 @@
 """Ownership validation service for plant, equipment, and inspection aggregates"""
 
-from uuid import UUID
 import logging
-from app.models.plant import Plant
+
+from app.exceptions import ConcurrentModificationError
+from app.models import ConflictDetail, ConflictError
 from app.models.equipment import Equipment
 from app.models.inspection import Inspection
 from app.models.inspector import Inspector
+from app.models.plant import Plant
 from app.models.work_log import WorkLog
-from app.models import ConflictError, ConflictDetail
-from app.repositories.plant import PlantRepository, queries as plant_queries
-from app.repositories.equipment import EquipmentRepository, queries as equipment_queries
+from app.repositories.equipment import EquipmentRepository
+from app.repositories.equipment import queries as equipment_queries
 from app.repositories.inspection import (
     InspectionRepository,
-    queries as inspection_queries,
 )
+from app.repositories.plant import PlantRepository
 from app.repositories.work_log import WorkLogRepository
-from app.exceptions import ConcurrentModificationError
-from app.utils.claim_utils import is_claim_stale
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,8 @@ class OwnershipValidator:
                     conflicts=[
                         ConflictDetail(
                             field="claimed_by_device_id",
-                            message=f"Plant is claimed by device {current.claimed_by_device_id}, not by device {self.device_id}",
+                            message=f"Plant is claimed by device {current.claimed_by_device_id},"
+                            f" not by device {self.device_id}",
                         )
                     ],
                 )
@@ -112,10 +112,8 @@ class OwnershipValidator:
             return  # New equipment, no validation needed
 
         # Get plant claim info for this equipment
-        plant_claim_info_row = (
-            await equipment_queries.get_plant_claim_info_for_equipment(
-                self.conn, equipment_id=equipment.id
-            )
+        plant_claim_info_row = await equipment_queries.get_plant_claim_info_for_equipment(
+            self.conn, equipment_id=equipment.id
         )
         if not plant_claim_info_row:
             return  # No plant found (shouldn't happen in normal flow)
@@ -143,7 +141,8 @@ class OwnershipValidator:
                     conflicts=[
                         ConflictDetail(
                             field="plant_claim",
-                            message=f"Plant {plant_claim_info_row['plant_id']} is claimed by device {plant_claim_info_row['claimed_by_device_id']}, not by device {self.device_id}",
+                            message=f"Plant {plant_claim_info_row['plant_id']} is claimed by device"
+                            f" {plant_claim_info_row['claimed_by_device_id']}, not by device {self.device_id}",
                         )
                     ],
                 )
@@ -189,7 +188,7 @@ class OwnershipValidator:
                     ],
                 )
             )
-    
+
     async def validate_work_log_ownership(self, work_log: WorkLog) -> None:
         """
         Validate that the work log is owned by the current user.
@@ -225,6 +224,7 @@ class OwnershipValidator:
             )
 
         if current.inspector_id != self.current_user.id:
+            assert current.server_modified_at is not None
             raise ConcurrentModificationError(
                 ConflictError(
                     message="Work log is owned by another user",
@@ -232,7 +232,8 @@ class OwnershipValidator:
                     conflicts=[
                         ConflictDetail(
                             field="inspector_id",
-                            message=f"Work log is owned by inspector {current.inspector_id}, not by user {self.current_user.id}",
+                            message=f"Work log is owned by inspector {current.inspector_id},"
+                            f" not by user {self.current_user.id}",
                         )
                     ],
                 )

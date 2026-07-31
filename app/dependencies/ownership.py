@@ -1,11 +1,12 @@
 """Ownership validation dependency"""
 
 from fastapi import Depends
+
 from app.database import get_db_connection
-from app.services.ownership_validator import OwnershipValidator
 from app.dependencies.auth import get_current_user, get_token_payload
-from app.models.inspector import Inspector
 from app.models.auth import TokenPayload
+from app.models.inspector import Inspector
+from app.services.ownership_validator import OwnershipValidator
 
 
 def get_ownership_validator(

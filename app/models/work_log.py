@@ -1,20 +1,21 @@
 """Work log aggregate models"""
 
-from pydantic import BaseModel, Field
 from datetime import datetime
-from uuid import UUID, uuid4
 from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class WorkLogInspector(BaseModel):
     """Work log - inspector relationship model"""
-    
+
     inspector_id: int
 
 
 class WorkLog(BaseModel):
     """Work log aggregate root - read model"""
-    
+
     id: UUID
     started_at: datetime
     completed_at: Optional[datetime] = None
@@ -29,5 +30,5 @@ class WorkLog(BaseModel):
 
 class WorkLogListResponse(BaseModel):
     """Wrapped response for work log list with items key"""
-    
+
     items: list[WorkLog]

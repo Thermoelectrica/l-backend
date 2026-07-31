@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Optional
 from uuid import UUID
+
 from pydantic import BaseModel
 
 
@@ -22,6 +23,7 @@ class ImageUploadStatus(str, Enum):
 
 class PresignedUploadUrlResponse(BaseModel):
     """Response model for presigned upload URL"""
+
     presigned_url: str
     presigned_url_expires_at: datetime
 
@@ -44,7 +46,7 @@ class Image(BaseModel):
 
 class PutImageRequestBody(BaseModel):
     """Image aggregate without file upload status and upload date"""
-    
+
     id: UUID
     plant_id: UUID
     # HOTFIX: original_file_name is temporarily optional to handle buggy client
@@ -57,5 +59,3 @@ class PutImageRequestBody(BaseModel):
     server_modified_at: datetime
     presigned_url: Optional[str] = None  # Generated dynamically, not stored in DB
     presigned_url_expires_at: Optional[datetime] = None  # Expiration time for presigned URL
-
-

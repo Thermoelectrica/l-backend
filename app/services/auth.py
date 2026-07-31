@@ -1,20 +1,20 @@
 """Authentication service with business logic"""
 
 import base64
-import os
-import secrets
 import hashlib
 import logging
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
-from uuid import UUID, uuid4
 from typing import Optional
+from uuid import UUID, uuid4
+
 import bcrypt
 import jwt
-import time
 
-from app.models.auth import TokenPayload, TokenResponse, InspectorWithPassword
-from app.repositories.auth import AuthRepository
 from app.config import settings
+from app.models.auth import InspectorWithPassword, TokenPayload, TokenResponse
+from app.repositories.auth import AuthRepository
 
 logger = logging.getLogger(__name__)
 
@@ -24,28 +24,20 @@ class AuthService:
 
     def __init__(self):
         self.repository = AuthRepository()
-        self._private_key: Optional[str] = None
-        self._public_key: Optional[str] = None
+        self._private_key: str = self._load_key(settings.private_key, settings.private_key_path, "PRIVATE_KEY")
+        self._public_key: str = self._load_key(settings.public_key, settings.public_key_path, "PUBLIC_KEY")
 
-    def _load_keys(self):
-        """Load RSA keys from environment variables or files (lazy loading)"""
-        if self._private_key is None:
-            # Try to load from environment variable first
-            if settings.private_key:
-                self._private_key = settings.private_key
-            else:
-                # Fallback to reading from file
-                with open(settings.private_key_path, "r") as f:
-                    self._private_key = f.read()
-
-        if self._public_key is None:
-            # Try to load from environment variable first
-            if settings.public_key:
-                self._public_key = settings.public_key
-            else:
-                # Fallback to reading from file
-                with open(settings.public_key_path, "r") as f:
-                    self._public_key = f.read()
+    @staticmethod
+    def _load_key(env_value: str | None, file_path: str | None, key_name: str) -> str:
+        """Load a single RSA key from env variable or file, raising ValueError if neither is set."""
+        if env_value:
+            return env_value
+        if file_path:
+            with open(file_path, "r") as f:
+                return f.read()
+        raise ValueError(
+            f"RSA key '{key_name}' is not configured: set the corresponding environment variable or file path."
+        )
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -70,8 +62,6 @@ class AuthService:
 
     def create_access_token(self, inspector_id: int, device_id: UUID | str, access_level: str) -> str:
         """Create a JWT access token with access level as scope"""
-        self._load_keys()
-
         now = datetime.now(timezone.utc)
         exp = now + timedelta(minutes=settings.access_token_lifetime_min)
 
@@ -90,9 +80,7 @@ class AuthService:
 
         # Convert to dict and ensure proper types for JWT
         payload_dict = payload.model_dump()
-        payload_dict["sub"] = str(
-            payload_dict["sub"]
-        )  # JWT spec requires sub to be a string
+        payload_dict["sub"] = str(payload_dict["sub"])  # JWT spec requires sub to be a string
         payload_dict["dev"] = str(payload_dict["dev"])
 
         return jwt.encode(payload_dict, self._private_key, algorithm="RS256")
@@ -104,19 +92,19 @@ class AuthService:
         try:
             expected_access_key = settings.s3_access_key_id
             expected_secret_key = settings.s3_secret_access_key
-            
+
             if not expected_access_key or not expected_secret_key:
                 logger.error("  S3 credentials not found in environment variables")
                 return None
-            
-            decoded_credentials = base64.b64decode(token).decode('utf-8')
-            
-            if ':' not in decoded_credentials:
+
+            decoded_credentials = base64.b64decode(token).decode("utf-8")
+
+            if ":" not in decoded_credentials:
                 logger.warning("  Invalid Basic auth format: missing colon separator")
                 return None
-                
-            inspector_id, access_key, secret_key = decoded_credentials.split(':')
-            
+
+            inspector_id, access_key, secret_key = decoded_credentials.split(":")
+
             current_time = int(time.time())
             if access_key == expected_access_key and secret_key == expected_secret_key:
                 return TokenPayload(
@@ -126,22 +114,21 @@ class AuthService:
                     exp=current_time + 3600,
                     iat=current_time,
                     iss="s3-auth",
-                    aud="s3-service"
+                    aud="s3-service",
                 )
             else:
                 logger.warning("  S3 credentials don't match")
                 return None
-                
+
         except Exception as e:
             logger.error(f"  Error in yc_verify_access_token: {e}")
             return None
-    
+
     def _jwt_verify_access_token(self, token: str) -> Optional[TokenPayload]:
         """
         Оригинальная функция проверки JWT токена (локальная)
         """
         try:
-            
             payload = jwt.decode(
                 token,
                 self._public_key,
@@ -158,21 +145,19 @@ class AuthService:
                 extra={"error_type": type(e).__name__, "error": str(e)},
             )
             return None
-    
+
     def verify_access_token(self, token: str) -> Optional[TokenPayload]:
         """
         Универсальная проверка токена: сначала JWT, потом S3 (Basic Auth)
         """
-        self._load_keys()
-        
         jwt_payload = self._jwt_verify_access_token(token)
         if jwt_payload:
             return jwt_payload
-        
+
         s3_payload = self._yc_verify_access_token(token)
         if s3_payload:
             return s3_payload
-        
+
         logger.warning("  Авторизация не удалась: ни JWT, ни S3 проверка не прошли")
         return None
 
@@ -182,8 +167,6 @@ class AuthService:
         This will accept expired or revoked tokens.
         WARNING: Only use when TRUST_INVALID_TOKENS is enabled for development/testing.
         """
-        self._load_keys()
-
         try:
             # Decode without verification - accepts expired tokens
             payload = jwt.decode(
@@ -202,9 +185,7 @@ class AuthService:
             )
             return None
 
-    async def login(
-        self, conn, username: str, password: str, device_id: str
-    ) -> Optional[TokenResponse]:
+    async def login(self, conn, username: str, password: str, device_id: str) -> Optional[TokenResponse]:
         """
         Authenticate user and create tokens.
         Returns None if authentication fails.
@@ -225,9 +206,7 @@ class AuthService:
         # Store refresh token in database
         token_id = uuid4()
         token_hash = self.hash_token(refresh_token_string)
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.refresh_token_lifetime_days
-        )
+        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_lifetime_days)
 
         await self.repository.create_refresh_token(
             conn,
@@ -238,9 +217,7 @@ class AuthService:
             expires_at=expires_at,
         )
 
-        return TokenResponse(
-            access_token=access_token, refresh_token=refresh_token_string
-        )
+        return TokenResponse(access_token=access_token, refresh_token=refresh_token_string)
 
     async def refresh(self, conn, refresh_token_string: str) -> Optional[TokenResponse]:
         """
@@ -278,9 +255,7 @@ class AuthService:
                 access_token = self.create_access_token(
                     token.inspector_id, token.device_id, inspector.access_level.value
                 )
-                return TokenResponse(
-                    access_token=access_token, refresh_token=refresh_token_string
-                )
+                return TokenResponse(access_token=access_token, refresh_token=refresh_token_string)
 
         # Mark token as used
         await self.repository.mark_token_used(conn, token.id)
@@ -292,9 +267,7 @@ class AuthService:
         # Create new refresh token in database
         new_token_id = uuid4()
         new_token_hash = self.hash_token(new_refresh_token_string)
-        new_expires_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.refresh_token_lifetime_days
-        )
+        new_expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_lifetime_days)
 
         await self.repository.create_refresh_token(
             conn,
@@ -308,13 +281,9 @@ class AuthService:
         # Revoke old token and link to new one
         await self.repository.revoke_and_replace(conn, token.id, new_token_id)
 
-        return TokenResponse(
-            access_token=new_access_token, refresh_token=new_refresh_token_string
-        )
+        return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token_string)
 
-    async def get_current_inspector(
-        self, conn, token: str
-    ) -> Optional[InspectorWithPassword]:
+    async def get_current_inspector(self, conn, token: str) -> Optional[InspectorWithPassword]:
         """Get current inspector from access token (returns internal model with password)"""
         payload = self.verify_access_token(token)
         if not payload:
@@ -357,9 +326,7 @@ class AuthService:
         new_password_hash = self.hash_password(new_password)
 
         # Update password in database atomically (checks old password hash in DB)
-        updated = await self.repository.update_password(
-            conn, inspector_id, inspector.password_hash, new_password_hash
-        )
+        updated = await self.repository.update_password(conn, inspector_id, inspector.password_hash, new_password_hash)
 
         # If update failed, old password didn't match (race condition)
         if not updated:
@@ -375,9 +342,7 @@ class AuthService:
         # Store new refresh token in database
         token_id = uuid4()
         token_hash = self.hash_token(refresh_token_string)
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            days=settings.refresh_token_lifetime_days
-        )
+        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_lifetime_days)
 
         await self.repository.create_refresh_token(
             conn,
@@ -388,6 +353,4 @@ class AuthService:
             expires_at=expires_at,
         )
 
-        return TokenResponse(
-            access_token=access_token, refresh_token=refresh_token_string
-        )
+        return TokenResponse(access_token=access_token, refresh_token=refresh_token_string)

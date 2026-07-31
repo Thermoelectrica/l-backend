@@ -1,6 +1,5 @@
 """Integration tests for DefectType API"""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -19,7 +18,14 @@ def test_get_all_defect_types(client: TestClient):
     # Verify structure of first item
     assert all(
         key in items[0]
-        for key in ["id", "name", "short_name", "t_max", "t_excess", "server_modified_at"]
+        for key in [
+            "id",
+            "name",
+            "short_name",
+            "t_max",
+            "t_excess",
+            "server_modified_at",
+        ]
     )
 
 

@@ -1,7 +1,8 @@
 """StickerType aggregate models"""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import List
+
 from pydantic import BaseModel, Field
 
 

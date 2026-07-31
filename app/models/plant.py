@@ -3,8 +3,9 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
+
 from pydantic import BaseModel, Field, computed_field
-from app.models import ConflictDetail, ConflictError
+
 from app.utils.claim_utils import is_claim_stale
 
 

@@ -1,20 +1,23 @@
 """Defect repository"""
 
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timezone
+
 import aiosql
-from app.constants import DEFAULT_MODIFIED_SINCE
-from app.models.defect import Defect, DefectListItem, DefectListResponse
-from app.models import ConflictError, ConflictDetail
-from app.exceptions import ConcurrentModificationError
+from aiosql.queries import Queries
+
 from app.config import settings
+from app.constants import DEFAULT_MODIFIED_SINCE
+from app.exceptions import ConcurrentModificationError
+from app.models import ConflictDetail, ConflictError
+from app.models.defect import Defect, DefectListItem, DefectListResponse
 from app.utils.async_wrapper import AsyncWrapper
 from app.utils.datetime_utils import truncate_to_milliseconds
 
 # Load queries with configurable driver
 _queries = aiosql.from_path("app/queries/defect.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class DefectRepository:
@@ -27,14 +30,9 @@ class DefectRepository:
             return None
         return Defect(**defect_row)
 
-    async def get_all(
-        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
-    ) -> DefectListResponse:
+    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> DefectListResponse:
         """Get all defects as lightweight list, optionally filtered by modification date"""
-        defect_rows = [
-            row
-            async for row in queries.get_all_defects(conn, modified_since=modified_since)
-        ]
+        defect_rows = [row async for row in queries.get_all_defects(conn, modified_since=modified_since)]
         defect_list = [DefectListItem(**row) for row in defect_rows]
         return DefectListResponse(items=defect_list)
 
@@ -43,10 +41,7 @@ class DefectRepository:
     ) -> list[Defect]:
         """Get all defects for a plant (full data)"""
         defect_rows = [
-            row
-            async for row in queries.get_by_plant_id(
-                conn, plant_id=plant_id, modified_since=modified_since
-            )
+            row async for row in queries.get_by_plant_id(conn, plant_id=plant_id, modified_since=modified_since)
         ]
         return [Defect(**row) for row in defect_rows]
 
@@ -73,6 +68,7 @@ class DefectRepository:
 
         if current and not (force or settings.disable_optimistic_locking):
             # Validate server_modified_at for existing defect
+            assert current.server_modified_at is not None
             if defect.server_modified_at is None:
                 raise ConcurrentModificationError(
                     ConflictError(
@@ -87,9 +83,9 @@ class DefectRepository:
                     )
                 )
 
-            if truncate_to_milliseconds(
-                defect.server_modified_at
-            ) != truncate_to_milliseconds(current.server_modified_at):
+            if truncate_to_milliseconds(defect.server_modified_at) != truncate_to_milliseconds(
+                current.server_modified_at
+            ):
                 raise ConcurrentModificationError(
                     ConflictError(
                         message="Defect was modified by another client",

@@ -1,30 +1,34 @@
 """Inspection repository"""
 
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 from uuid import UUID
-from datetime import datetime, timezone
+
 import aiosql
+from aiosql.queries import Queries
+
+from app.config import settings
 from app.constants import DEFAULT_MODIFIED_SINCE
+from app.exceptions import ConcurrentModificationError
+from app.models import ConflictDetail, ConflictError
 from app.models.inspection import (
-    Inspection,
-    InspectionStep,
     ImageLink,
+    Inspection,
     InspectionListItem,
     InspectionListResponse,
+    InspectionStep,
 )
-from app.models import ConflictError, ConflictDetail
-from app.exceptions import ConcurrentModificationError
-from app.config import settings
 from app.utils.async_wrapper import AsyncWrapper
 from app.utils.datetime_utils import truncate_to_milliseconds
 
 # Load queries with configurable driver
 _queries = aiosql.from_path("app/queries/inspection.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class InspectionRepository:
-    """Repository for Inspection aggregate with step and image link synchronization and optimistic concurrency control"""
+    """Repository for Inspection aggregate with step and image link synchronization
+    and optimistic concurrency control"""
 
     def _build_inspection_aggregates(
         self, inspection_rows: list, step_rows: list, image_link_rows: list
@@ -47,9 +51,7 @@ class InspectionRepository:
             if step_id not in image_links_by_step:
                 image_links_by_step[step_id] = []
             image_links_by_step[step_id].append(
-                ImageLink(
-                    image_id=row["image_id"], is_deleted=row.get("is_deleted", False)
-                )
+                ImageLink(image_id=row["image_id"], is_deleted=row.get("is_deleted", False))
             )
 
         # Group steps by inspection_id
@@ -61,18 +63,14 @@ class InspectionRepository:
 
             step_data = {k: v for k, v in row.items() if k != "inspection_id"}
             step_id = step_data["id"]
-            step = InspectionStep(
-                **step_data, image_links=image_links_by_step.get(step_id, [])
-            )
+            step = InspectionStep(**step_data, image_links=image_links_by_step.get(step_id, []))
             steps_by_inspection[inspection_id].append(step)
 
         # Build Inspection instances
         inspection_list = []
         for inspection_row in inspection_rows:
             inspection_id = inspection_row["id"]
-            inspection = Inspection(
-                **inspection_row, steps=steps_by_inspection.get(inspection_id, [])
-            )
+            inspection = Inspection(**inspection_row, steps=steps_by_inspection.get(inspection_id, []))
             inspection_list.append(inspection)
 
         return inspection_list
@@ -85,19 +83,12 @@ class InspectionRepository:
             return None
 
         # Get steps
-        step_rows = [
-            row async for row in queries.get_steps(conn, inspection_id=inspection_id)
-        ]
+        step_rows = [row async for row in queries.get_steps(conn, inspection_id=inspection_id)]
 
         # Get image links for all steps
         image_link_rows = []
         for step_row in step_rows:
-            links = [
-                row
-                async for row in queries.get_image_links(
-                    conn, inspection_step_id=step_row["id"]
-                )
-            ]
+            links = [row async for row in queries.get_image_links(conn, inspection_step_id=step_row["id"])]
             for link in links:
                 image_link_rows.append(
                     {
@@ -108,22 +99,13 @@ class InspectionRepository:
                 )
 
         # Build and return single inspection aggregate
-        inspection_list = self._build_inspection_aggregates(
-            [inspection_row], step_rows, image_link_rows
-        )
+        inspection_list = self._build_inspection_aggregates([inspection_row], step_rows, image_link_rows)
 
         return inspection_list[0] if inspection_list else None
 
-    async def get_all(
-        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
-    ) -> InspectionListResponse:
+    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> InspectionListResponse:
         """Get all inspections as lightweight list, optionally filtered by modification date"""
-        inspection_rows = [
-            row
-            async for row in queries.get_all_inspections(
-                conn, modified_since=modified_since
-            )
-        ]
+        inspection_rows = [row async for row in queries.get_all_inspections(conn, modified_since=modified_since)]
         inspection_list = [InspectionListItem(**row) for row in inspection_rows]
         return InspectionListResponse(items=inspection_list)
 
@@ -133,32 +115,20 @@ class InspectionRepository:
         """Get all inspections for plant (full aggregates) - uses batch queries for efficiency"""
         # Fetch all data in parallel using batch queries
         inspection_rows = [
-            row
-            async for row in queries.get_by_plant_id(
-                conn, plant_id=plant_id, modified_since=modified_since
-            )
+            row async for row in queries.get_by_plant_id(conn, plant_id=plant_id, modified_since=modified_since)
         ]
 
         if not inspection_rows:
             return []
 
         # Fetch all related data for the plant in batch
-        step_rows = [
-            row async for row in queries.get_steps_by_plant(conn, plant_id=plant_id)
-        ]
-        image_link_rows = [
-            row
-            async for row in queries.get_image_links_by_plant(conn, plant_id=plant_id)
-        ]
+        step_rows = [row async for row in queries.get_steps_by_plant(conn, plant_id=plant_id)]
+        image_link_rows = [row async for row in queries.get_image_links_by_plant(conn, plant_id=plant_id)]
 
         # Build and return inspection aggregates
-        return self._build_inspection_aggregates(
-            inspection_rows, step_rows, image_link_rows
-        )
+        return self._build_inspection_aggregates(inspection_rows, step_rows, image_link_rows)
 
-    async def save(
-        self, conn, inspection: Inspection, force: bool = False
-    ) -> Inspection:
+    async def save(self, conn, inspection: Inspection, force: bool = False) -> Inspection:
         """
         Save inspection with step and image link synchronization and optimistic concurrency control.
         Must be called within transaction.
@@ -195,9 +165,9 @@ class InspectionRepository:
                     )
                 )
 
-            if truncate_to_milliseconds(
-                inspection.server_modified_at
-            ) != truncate_to_milliseconds(current.server_modified_at):
+            if truncate_to_milliseconds(inspection.server_modified_at) != truncate_to_milliseconds(
+                current.server_modified_at
+            ):
                 raise ConcurrentModificationError(
                     ConflictError(
                         message="Inspection was modified by another client",
@@ -215,9 +185,7 @@ class InspectionRepository:
                 )
 
             # Check for extra steps on server
-            current_step_ids = {
-                step.id for step in current.steps if not step.is_deleted
-            }
+            current_step_ids = {step.id for step in current.steps if not step.is_deleted}
             incoming_step_ids = {step.id for step in inspection.steps}
             extra_step_ids = current_step_ids - incoming_step_ids
 
@@ -264,9 +232,7 @@ class InspectionRepository:
         result = await queries.delete_inspection(conn, id=inspection_id)
         return result is not None and "0" not in result
 
-    async def _sync_steps(
-        self, conn, inspection_id: UUID, steps: Sequence[InspectionStep], force: bool
-    ):
+    async def _sync_steps(self, conn, inspection_id: UUID, steps: Sequence[InspectionStep], force: bool):
         """
         Synchronize steps: match by ID, add new, mark removed as deleted.
 
@@ -277,9 +243,7 @@ class InspectionRepository:
             force: If True, mark extra steps as deleted; if False, extras already validated
         """
         # Get existing step IDs for this inspection
-        existing_rows = [
-            row async for row in queries.get_step_ids(conn, inspection_id=inspection_id)
-        ]
+        existing_rows = [row async for row in queries.get_step_ids(conn, inspection_id=inspection_id)]
         existing_ids = {row["id"] for row in existing_rows}
 
         incoming_ids = {step.id for step in steps}
@@ -289,13 +253,8 @@ class InspectionRepository:
             if step.id not in existing_ids:
                 # This is a new step or existing step from another inspection
                 # Check if it exists in another inspection
-                existing_inspection_row = await queries.get_step_inspection_id(
-                    conn, step_id=step.id
-                )
-                if (
-                    existing_inspection_row
-                    and existing_inspection_row["inspection_id"] != inspection_id
-                ):
+                existing_inspection_row = await queries.get_step_inspection_id(conn, step_id=step.id)
+                if existing_inspection_row and existing_inspection_row["inspection_id"] != inspection_id:
                     raise ValueError(
                         f"Cannot transfer step {step.id} from another inspection "
                         f"({existing_inspection_row['inspection_id']}). Child entities cannot be stolen."
@@ -339,9 +298,7 @@ class InspectionRepository:
             for step_id in to_delete:
                 await queries.mark_step_deleted(conn, id=step_id)
 
-    async def _sync_image_links(
-        self, conn, inspection_step_id: UUID, image_links: Sequence[ImageLink]
-    ):
+    async def _sync_image_links(self, conn, inspection_step_id: UUID, image_links: Sequence[ImageLink]):
         """
         Synchronize image links: match by image_id, upsert all, mark removed as deleted.
 
@@ -351,12 +308,7 @@ class InspectionRepository:
             image_links: List of image links to sync
         """
         # Get existing image link IDs for this step
-        existing_rows = [
-            row
-            async for row in queries.get_image_link_ids(
-                conn, inspection_step_id=inspection_step_id
-            )
-        ]
+        existing_rows = [row async for row in queries.get_image_link_ids(conn, inspection_step_id=inspection_step_id)]
         existing_ids = {row["image_id"] for row in existing_rows}
 
         incoming_ids = {link.image_id for link in image_links}
@@ -373,6 +325,4 @@ class InspectionRepository:
         # Mark removed image links as deleted (logical deletion)
         to_delete = existing_ids - incoming_ids
         for image_id in to_delete:
-            await queries.mark_image_link_deleted(
-                conn, image_id=image_id, inspection_step_id=inspection_step_id
-            )
+            await queries.mark_image_link_deleted(conn, image_id=image_id, inspection_step_id=inspection_step_id)

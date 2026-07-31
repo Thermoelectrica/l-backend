@@ -1,8 +1,10 @@
 """Tests for disabling optimistic locking via configuration"""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 from fastapi.testclient import TestClient
+
 from app.config import settings
 
 
@@ -237,7 +239,6 @@ def test_defect_update_with_stale_timestamp_when_enabled(
     }
     response = client.put("/defect", json=defect_data)
     assert response.status_code == 200
-    created_defect = response.json()
 
     # Update defect with stale timestamp (should fail when optimistic locking is enabled)
     defect_data["status"] = "RESOLVED"

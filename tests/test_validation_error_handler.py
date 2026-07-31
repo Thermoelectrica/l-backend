@@ -1,8 +1,5 @@
 """Tests for RequestValidationError handler"""
 
-import pytest
-from fastapi.testclient import TestClient
-
 
 # Use the client fixture from conftest.py which has auth disabled
 # No need to define a separate client fixture here
@@ -83,7 +80,8 @@ def test_validation_error_empty_request_body(client):
 def test_validation_error_multiple_invalid_fields(client):
     """Test validation error with multiple invalid fields"""
     response = client.post(
-        "/auth/refresh", json={"refresh_token": 12345}  # Should be string
+        "/auth/refresh",
+        json={"refresh_token": 12345},  # Should be string
     )
 
     assert response.status_code == 422
@@ -208,7 +206,6 @@ def test_validation_error_content_type(client):
 
 def test_validation_error_different_endpoints(client):
     """Test validation error handling across different endpoints"""
-    from uuid import uuid4
 
     # Test on refresh endpoint
     response1 = client.post("/auth/refresh", json={})  # Missing refresh_token

@@ -1,30 +1,33 @@
 """Equipment repository"""
 
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 from uuid import UUID
-from datetime import datetime, timezone
+
 import aiosql
+from aiosql.queries import Queries
+
+from app.config import settings
 from app.constants import DEFAULT_MODIFIED_SINCE
+from app.exceptions import ConcurrentModificationError
+from app.models import ConflictDetail, ConflictError
 from app.models.equipment import (
-    Equipment,
     ControlPoint,
-    Defect,
+    Equipment,
     EquipmentListItem,
     EquipmentListResponse,
 )
-from app.models import ConflictError, ConflictDetail
-from app.exceptions import ConcurrentModificationError
-from app.config import settings
 from app.utils.async_wrapper import AsyncWrapper
 from app.utils.datetime_utils import truncate_to_milliseconds
 
 # Load queries with configurable driver
 _queries = aiosql.from_path("app/queries/equipment.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class EquipmentRepository:
-    """Repository for Equipment aggregate with control point and defect synchronization and optimistic concurrency control"""
+    """Repository for Equipment aggregate with control point and defect synchronization
+    and optimistic concurrency control"""
 
     def _build_equipment_aggregates(
         self,
@@ -89,20 +92,14 @@ class EquipmentRepository:
             return None
 
         # Get control points
-        control_point_rows = [
-            row
-            async for row in queries.get_control_points(conn, equipment_id=equipment_id)
-        ]
+        control_point_rows = [row async for row in queries.get_control_points(conn, equipment_id=equipment_id)]
 
         # DEPRECATED: Defects are now managed via separate defect router
         # Always return empty list for backwards compatibility
         defect_rows = []
 
         # Get inspection IDs
-        inspection_rows = [
-            row
-            async for row in queries.get_inspection_ids(conn, equipment_id=equipment_id)
-        ]
+        inspection_rows = [row async for row in queries.get_inspection_ids(conn, equipment_id=equipment_id)]
 
         # Build and return single equipment aggregate
         equipment_list = self._build_equipment_aggregates(
@@ -111,16 +108,9 @@ class EquipmentRepository:
 
         return equipment_list[0] if equipment_list else None
 
-    async def get_all(
-        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
-    ) -> EquipmentListResponse:
+    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> EquipmentListResponse:
         """Get all equipment as lightweight list, optionally filtered by modification date"""
-        equipment_rows = [
-            row
-            async for row in queries.get_all_equipment(
-                conn, modified_since=modified_since
-            )
-        ]
+        equipment_rows = [row async for row in queries.get_all_equipment(conn, modified_since=modified_since)]
         equipment_list = [EquipmentListItem(**row) for row in equipment_rows]
         return EquipmentListResponse(items=equipment_list)
 
@@ -130,35 +120,22 @@ class EquipmentRepository:
         """Get all equipment for a plant (full aggregates, defects always empty) - uses batch queries for efficiency"""
         # Fetch all data in parallel using batch queries
         equipment_rows = [
-            row
-            async for row in queries.get_by_plant_id(
-                conn, plant_id=plant_id, modified_since=modified_since
-            )
+            row async for row in queries.get_by_plant_id(conn, plant_id=plant_id, modified_since=modified_since)
         ]
 
         if not equipment_rows:
             return []
 
         # Fetch all related data for the plant in batch
-        control_point_rows = [
-            row
-            async for row in queries.get_control_points_by_plant(
-                conn, plant_id=plant_id
-            )
-        ]
+        control_point_rows = [row async for row in queries.get_control_points_by_plant(conn, plant_id=plant_id)]
         # DEPRECATED: Defects are now managed via separate defect router
         # Always return empty list for backwards compatibility
         defect_rows = []
-        
-        inspection_rows = [
-            row
-            async for row in queries.get_inspections_by_plant(conn, plant_id=plant_id)
-        ]
+
+        inspection_rows = [row async for row in queries.get_inspections_by_plant(conn, plant_id=plant_id)]
 
         # Build and return equipment aggregates
-        return self._build_equipment_aggregates(
-            equipment_rows, control_point_rows, defect_rows, inspection_rows
-        )
+        return self._build_equipment_aggregates(equipment_rows, control_point_rows, defect_rows, inspection_rows)
 
     async def save(self, conn, equipment: Equipment, force: bool = False) -> Equipment:
         """
@@ -198,9 +175,9 @@ class EquipmentRepository:
                     )
                 )
 
-            if truncate_to_milliseconds(
-                equipment.server_modified_at
-            ) != truncate_to_milliseconds(current.server_modified_at):
+            if truncate_to_milliseconds(equipment.server_modified_at) != truncate_to_milliseconds(
+                current.server_modified_at
+            ):
                 raise ConcurrentModificationError(
                     ConflictError(
                         message="Equipment was modified by another client",
@@ -218,9 +195,7 @@ class EquipmentRepository:
                 )
 
             # Check for extra control points on server
-            current_cp_ids = {
-                cp.id for cp in current.control_points if not cp.is_deleted
-            }
+            current_cp_ids = {cp.id for cp in current.control_points if not cp.is_deleted}
             incoming_cp_ids = {cp.id for cp in equipment.control_points}
             extra_cp_ids = current_cp_ids - incoming_cp_ids
 
@@ -260,9 +235,7 @@ class EquipmentRepository:
         )
 
         # Synchronize control points
-        await self._sync_control_points(
-            conn, equipment_id, equipment.control_points, force
-        )
+        await self._sync_control_points(conn, equipment_id, equipment.control_points, force)
 
         # DEPRECATED: Defects are now managed via separate defect router
         # Ignore defects in save for backwards compatibility
@@ -296,12 +269,7 @@ class EquipmentRepository:
             force: If True, mark extra control points as deleted; if False, extras already validated
         """
         # Get existing control point IDs for this equipment
-        existing_rows = [
-            row
-            async for row in queries.get_control_point_ids(
-                conn, equipment_id=equipment_id
-            )
-        ]
+        existing_rows = [row async for row in queries.get_control_point_ids(conn, equipment_id=equipment_id)]
         existing_ids = {row["id"] for row in existing_rows}
 
         incoming_ids = {cp.id for cp in control_points}
@@ -314,10 +282,7 @@ class EquipmentRepository:
                 existing_equipment_row = await queries.get_control_point_equipment_id(
                     conn, control_point_id=control_point.id
                 )
-                if (
-                    existing_equipment_row
-                    and existing_equipment_row["equipment_id"] != equipment_id
-                ):
+                if existing_equipment_row and existing_equipment_row["equipment_id"] != equipment_id:
                     raise ValueError(
                         f"Cannot transfer control point {control_point.id} from another equipment "
                         f"({existing_equipment_row['equipment_id']}). Child entities cannot be stolen."

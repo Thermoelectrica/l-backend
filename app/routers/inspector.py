@@ -1,11 +1,13 @@
 """Inspector router"""
 
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
+
 from app.constants import DEFAULT_MODIFIED_SINCE
+from app.database import get_db_connection
 from app.models.inspector import InspectorListResponse
 from app.repositories.inspector import InspectorRepository
-from app.database import get_db_connection
 
 router = APIRouter(prefix="/inspector", tags=["inspector"])
 inspector_repo = InspectorRepository()

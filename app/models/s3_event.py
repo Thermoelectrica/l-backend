@@ -1,6 +1,9 @@
 """S3 Event model"""
-from pydantic import BaseModel
+
 from typing import List
+
+from pydantic import BaseModel
+
 
 class EventMetadata(BaseModel):
     event_id: str
@@ -10,13 +13,16 @@ class EventMetadata(BaseModel):
     cloud_id: str
     folder_id: str
 
+
 class Details(BaseModel):
     bucket_id: str
     object_id: str
 
+
 class Message(BaseModel):
     event_metadata: EventMetadata
     details: Details
+
 
 class StorageEventPayload(BaseModel):
     messages: List[Message]

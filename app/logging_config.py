@@ -2,6 +2,7 @@
 
 import logging
 import sys
+
 from pythonjsonlogger import json
 
 
@@ -48,9 +49,7 @@ def setup_logging(log_level: str = "INFO", enable_json: bool = True):
 
     if enable_json:
         # Use JSON formatter
-        formatter = CustomJsonFormatter(
-            "%(timestamp)s %(level)s %(name)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S"
-        )
+        formatter = CustomJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
     else:
         # Use standard formatter for local development
         formatter = logging.Formatter(

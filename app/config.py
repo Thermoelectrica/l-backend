@@ -1,8 +1,9 @@
 """Application configuration"""
 
 from typing import Optional
-from pydantic_settings import BaseSettings
 from urllib.parse import urlparse, urlunparse
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -34,8 +35,10 @@ class Settings(BaseSettings):
 
     # S3 settings
     s3_region: str = "ru-central1"
-    s3_endpoint_host: Optional[str] = "storage.yandexcloud.net"  # S3 endpoint host (e.g., "storage.yandexcloud.net" for Yandex, "s3.amazonaws.com" for AWS)
-    s3_use_virtual_hosted_style: bool = True  # Use virtual-hosted-style URLs (bucket.host) instead of path-style (host/bucket)
+    # S3 endpoint host (e.g., "storage.yandexcloud.net" for Yandex, "s3.amazonaws.com" for AWS)
+    s3_endpoint_host: Optional[str] = "storage.yandexcloud.net"
+    # Use virtual-hosted-style URLs (bucket.host) instead of path-style (host/bucket)
+    s3_use_virtual_hosted_style: bool = True
     s3_bucket_name: str
     s3_access_key_id: Optional[str] = None
     s3_secret_access_key: Optional[str] = None
@@ -73,4 +76,4 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()
+settings = Settings()  # type: ignore

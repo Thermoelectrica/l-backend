@@ -1,11 +1,13 @@
 """StickerType router"""
 
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, Query
+
+from fastapi import APIRouter, Depends, Query
+
 from app.constants import DEFAULT_MODIFIED_SINCE
+from app.database import get_db_connection
 from app.models.sticker_type import StickerTypeListResponse
 from app.repositories.sticker_type import StickerTypeRepository
-from app.database import get_db_connection
 
 router = APIRouter(prefix="/sticker-type", tags=["sticker-type"])
 sticker_type_repo = StickerTypeRepository()

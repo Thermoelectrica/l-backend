@@ -1,6 +1,5 @@
 """Integration tests for FacilityTemplate API"""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -19,7 +18,13 @@ def test_get_all_facility_templates(client: TestClient):
     # Verify structure of first item
     assert all(
         key in items[0]
-        for key in ["id", "name", "is_multiple_allowed", "server_modified_at", "equipment_templates"]
+        for key in [
+            "id",
+            "name",
+            "is_multiple_allowed",
+            "server_modified_at",
+            "equipment_templates",
+        ]
     )
 
 
@@ -74,11 +79,11 @@ def test_facility_template_equipment_values(client: TestClient):
     # Check that there's at least one container template
     containers = [t for t in templates if t["is_container"] is True]
     assert len(containers) > 0
-    
+
     # Check that there's at least one root template (parent_id is None)
     root_templates = [t for t in templates if t["parent_id"] is None]
     assert len(root_templates) > 0
-    
+
     # Check that there's at least one child template (parent_id is not None)
     child_templates = [t for t in templates if t["parent_id"] is not None]
     assert len(child_templates) > 0
@@ -101,17 +106,11 @@ def test_facility_template_with_equipment_types(client: TestClient):
     assert len(general_facility["equipment_templates"]) >= 13
 
     # Verify that some equipment templates have equipment_type_id set
-    templates_with_types = [
-        t for t in general_facility["equipment_templates"]
-        if t["equipment_type_id"] is not None
-    ]
+    templates_with_types = [t for t in general_facility["equipment_templates"] if t["equipment_type_id"] is not None]
     assert len(templates_with_types) > 0
-    
+
     # Verify that some equipment templates don't have equipment_type_id (containers)
-    templates_without_types = [
-        t for t in general_facility["equipment_templates"]
-        if t["equipment_type_id"] is None
-    ]
+    templates_without_types = [t for t in general_facility["equipment_templates"] if t["equipment_type_id"] is None]
     assert len(templates_without_types) > 0
 
 
@@ -152,26 +151,20 @@ def test_facility_template_hierarchical_structure(client: TestClient):
     assert tg is not None
 
     templates = tg["equipment_templates"]
-    
+
     # Find root equipment (Турбинное отделение)
-    turb_otd = next(
-        (t for t in templates if t["name"] == "Турбинное отделение"), None
-    )
+    turb_otd = next((t for t in templates if t["name"] == "Турбинное отделение"), None)
     assert turb_otd is not None
     assert turb_otd["parent_id"] is None
 
     # Find child equipment (Система возбуждения)
-    sys_vozb = next(
-        (t for t in templates if t["name"] == "Система возбуждения"), None
-    )
+    sys_vozb = next((t for t in templates if t["name"] == "Система возбуждения"), None)
     assert sys_vozb is not None
     assert sys_vozb["parent_id"] == turb_otd["id"]
     assert sys_vozb["equipment_type_id"] == 1  # Система возбуждения equipment type
 
     # Find grandchild equipment (Панели)
-    panels = next(
-        (t for t in templates if t["name"] == "Панели"), None
-    )
+    panels = next((t for t in templates if t["name"] == "Панели"), None)
     assert panels is not None
     assert panels["parent_id"] == sys_vozb["id"]
 
@@ -186,7 +179,7 @@ def test_multiple_facility_templates_with_different_structures(client: TestClien
 
     # Verify each template has different number of equipment (using >= for flexibility)
     equipment_counts = {item["id"]: len(item["equipment_templates"]) for item in items}
-    
+
     assert equipment_counts[1] >= 5  # Хозяйство резервного топлива
     assert equipment_counts[2] >= 13  # Общестанционное оборудование
     assert equipment_counts[3] >= 2  # ПГУ

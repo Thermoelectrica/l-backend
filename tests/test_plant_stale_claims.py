@@ -1,11 +1,12 @@
 """Tests for stale claim mechanism - claims persist but can be overridden after 3:00 AM"""
 
-import pytest
-from uuid import uuid4
-from datetime import datetime, timezone, timedelta
-from fastapi.testclient import TestClient
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
 
 PUT_BODY_TEMPLATE = {
     "name": "Test Power Plant",
@@ -77,7 +78,7 @@ def test_is_stale_field_in_list_response(client: TestClient, plant_data, plant_i
     response = client.get("/plant/all")
     assert response.status_code == 200
     data = response.json()
-    
+
     plant = next((p for p in data["items"] if p["id"] == str(plant_id)), None)
     assert plant is not None
     assert "is_stale" in plant
@@ -111,25 +112,25 @@ def test_fresh_claim_is_not_stale(client: TestClient, plant_data, plant_id):
 
 def test_claim_from_yesterday_is_stale(client: TestClient, plant_data, plant_id):
     """Test that a claim from yesterday (before 3:00 AM) is stale"""
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
+    from datetime import timedelta
 
     # Create plant
     client.put("/plant", json=plant_data)
 
     # Mock datetime to claim it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         from app.services.auth import AuthService
+
         auth_service = AuthService()
         device_id = uuid4()
         user_id = 1
         access_token = auth_service.create_access_token(user_id, device_id, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -156,25 +157,25 @@ def test_unclaimed_plant_is_stale(client: TestClient, plant_data, plant_id):
 
 def test_reclaim_stale_plant_by_different_user(client: TestClient, plant_data, plant_id):
     """Test that a different user can claim a stale plant"""
+    from datetime import timedelta
+
     from app.services.auth import AuthService
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
 
     # Create plant
     client.put("/plant", json=plant_data)
 
     # User 1 claims it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         device_id_1 = uuid4()
         user_id_1 = 1
         access_token_1 = auth_service.create_access_token(user_id_1, device_id_1, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token_1}"},
@@ -199,9 +200,7 @@ def test_reclaim_stale_plant_by_different_user(client: TestClient, plant_data, p
     assert data["is_stale"] is False
 
 
-def test_cannot_reclaim_fresh_plant_by_different_user(
-    client: TestClient, plant_data, plant_id
-):
+def test_cannot_reclaim_fresh_plant_by_different_user(client: TestClient, plant_data, plant_id):
     """Test that a different user cannot claim a fresh (non-stale) plant"""
     from app.services.auth import AuthService
 
@@ -271,9 +270,9 @@ def test_same_user_can_reclaim_own_plant(client: TestClient, plant_data, plant_i
 
 async def test_can_modify_plant_with_stale_claim(client: TestClient, plant_data, plant_id, grant_plant_access):
     """Test that modifying a plant with a stale claim requires re-claiming"""
+    from datetime import timedelta
+
     from app.services.auth import AuthService
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
 
     # Create plant
     create_response = client.put("/plant", json=plant_data)
@@ -281,16 +280,16 @@ async def test_can_modify_plant_with_stale_claim(client: TestClient, plant_data,
 
     # User 1 claims it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         device_id_1 = uuid4()
         user_id_1 = 1
         access_token_1 = auth_service.create_access_token(user_id_1, device_id_1, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token_1}"},
@@ -325,13 +324,11 @@ async def test_can_modify_plant_with_stale_claim(client: TestClient, plant_data,
     assert "claim" in error_data["message"].lower()
 
 
-def test_can_modify_after_reclaiming_stale_plant(
-    client: TestClient, plant_data, plant_id
-):
+def test_can_modify_after_reclaiming_stale_plant(client: TestClient, plant_data, plant_id):
     """Test that after re-claiming a stale plant, user can modify it"""
+    from datetime import timedelta
+
     from app.services.auth import AuthService
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
 
     # Create plant
     create_response = client.put("/plant", json=plant_data)
@@ -339,16 +336,16 @@ def test_can_modify_after_reclaiming_stale_plant(
 
     # User 1 claims it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         device_id_1 = uuid4()
         user_id_1 = 1
         access_token_1 = auth_service.create_access_token(user_id_1, device_id_1, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token_1}"},
@@ -385,8 +382,8 @@ def test_can_modify_after_reclaiming_stale_plant(
 
 def test_stale_claim_persists_in_database(client: TestClient, plant_data, plant_id):
     """Test that stale claims are not removed from database, just marked as stale"""
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
+    from datetime import timedelta
+
     from app.services.auth import AuthService
 
     # Create plant
@@ -395,15 +392,15 @@ def test_stale_claim_persists_in_database(client: TestClient, plant_data, plant_
     # Claim it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     device_id = uuid4()
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         user_id = 1
         access_token = auth_service.create_access_token(user_id, device_id, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -413,12 +410,12 @@ def test_stale_claim_persists_in_database(client: TestClient, plant_data, plant_
     response = client.get(f"/plant/by_id/{plant_id}")
     assert response.status_code == 200
     data = response.json()
-    
+
     # Claim data should still be present
     assert data["claimed_by_device_id"] == str(device_id)
     assert data["claimed_by_user_id"] == 1
     assert data["claimed_at"] is not None
-    
+
     # But it should be marked as stale
     assert data["is_stale"] is True
 
@@ -427,30 +424,28 @@ async def test_equipment_modification_with_stale_plant_claim(
     client: TestClient, plant_data, plant_id, grant_plant_access
 ):
     """Test that equipment cannot be modified if parent plant has stale claim"""
+    from datetime import timedelta
+
     from app.services.auth import AuthService
-    from datetime import datetime, timezone, timedelta
-    from unittest.mock import patch
 
     # Create plant with facility
     facility_id = uuid4()
-    plant_data["facilities"] = [
-        {"id": str(facility_id), "name": "Facility 1", "is_deleted": False}
-    ]
-    
+    plant_data["facilities"] = [{"id": str(facility_id), "name": "Facility 1", "is_deleted": False}]
+
     client.put("/plant", json=plant_data)
 
     # User 1 claims it "yesterday"
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = yesterday
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         device_id_1 = uuid4()
         user_id_1 = 1
         access_token_1 = auth_service.create_access_token(user_id_1, device_id_1, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token_1}"},
@@ -504,8 +499,8 @@ async def test_equipment_modification_with_stale_plant_claim(
 
 def test_claim_expiration_at_3am_moscow_time(client: TestClient, plant_data, plant_id):
     """Test that claims expire at 3:00 AM Moscow time (00:00 UTC)"""
-    from datetime import datetime, timezone, time
-    from unittest.mock import patch
+    from datetime import time
+
     from app.services.auth import AuthService
 
     # Create plant
@@ -514,20 +509,20 @@ def test_claim_expiration_at_3am_moscow_time(client: TestClient, plant_data, pla
     # Claim at 2:59 AM Moscow time (23:59 UTC yesterday)
     now_utc = datetime.now(timezone.utc)
     today_midnight_utc = datetime.combine(now_utc.date(), time(0, 0), tzinfo=timezone.utc)
-    
+
     # Claim made 1 minute before 3:00 AM Moscow (23:59 UTC yesterday)
     claim_time = today_midnight_utc - timedelta(minutes=1)
-    
+
     device_id = uuid4()
-    
-    with patch('app.repositories.plant.datetime') as mock_datetime:
+
+    with patch("app.repositories.plant.datetime") as mock_datetime:
         mock_datetime.now.return_value = claim_time
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        
+
         auth_service = AuthService()
         user_id = 1
         access_token = auth_service.create_access_token(user_id, device_id, "MODIFY")
-        
+
         client.post(
             f"/plant/by_id/{plant_id}/claim",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -571,8 +566,9 @@ def test_release_plant_clears_claim(client: TestClient, plant_data, plant_id):
 
 def test_claim_updates_server_modified_at(client: TestClient, plant_data, plant_id):
     """Test that claiming a plant updates server_modified_at for sync purposes"""
-    from app.services.auth import AuthService
     import time
+
+    from app.services.auth import AuthService
 
     # Create plant
     create_response = client.put("/plant", json=plant_data)
@@ -596,7 +592,7 @@ def test_claim_updates_server_modified_at(client: TestClient, plant_data, plant_
 
     # Verify server_modified_at was updated in response
     data = claim_response.json()
-    
+
     # server_modified_at should be updated (newer than initial)
     assert data["server_modified_at"] != initial_modified_at
     assert data["server_modified_at"] > initial_modified_at
@@ -604,8 +600,9 @@ def test_claim_updates_server_modified_at(client: TestClient, plant_data, plant_
 
 def test_release_updates_server_modified_at(client: TestClient, plant_data, plant_id):
     """Test that releasing a plant updates server_modified_at for sync purposes"""
-    from app.services.auth import AuthService
     import time
+
+    from app.services.auth import AuthService
 
     # Create and claim plant
     client.put("/plant", json=plant_data)
@@ -633,7 +630,7 @@ def test_release_updates_server_modified_at(client: TestClient, plant_data, plan
 
     # Verify server_modified_at was updated in response
     data = release_response.json()
-    
+
     # server_modified_at should be updated (newer than when claimed)
     assert data["server_modified_at"] != claimed_modified_at
     assert data["server_modified_at"] > claimed_modified_at

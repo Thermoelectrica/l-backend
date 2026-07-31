@@ -1,6 +1,8 @@
-from mangum import Mangum  # ASGI adapter for serverless
-from app.main import app
 import logging
+
+from mangum import Mangum  # ASGI adapter for serverless
+
+from app.main import app
 
 # Logging is already initialized in app.main
 logger = logging.getLogger(__name__)

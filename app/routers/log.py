@@ -1,9 +1,10 @@
 """Log router"""
 
 from fastapi import APIRouter, Depends
+
+from app.database import get_db_connection
 from app.models.log import LogEntry
 from app.repositories.log import LogRepository
-from app.database import get_db_connection
 
 router = APIRouter(prefix="/log", tags=["log"])
 log_repo = LogRepository()

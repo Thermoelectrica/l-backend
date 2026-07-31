@@ -1,6 +1,5 @@
 """Integration tests for EquipmentType API"""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -17,10 +16,7 @@ def test_get_all_equipment_types(client: TestClient):
     assert len(items) == 5
 
     # Verify structure of first item
-    assert all(
-        key in items[0]
-        for key in ["id", "name", "server_modified_at", "control_point_templates"]
-    )
+    assert all(key in items[0] for key in ["id", "name", "server_modified_at", "control_point_templates"])
 
 
 def test_equipment_type_with_templates(client: TestClient):
@@ -70,9 +66,7 @@ def test_equipment_type_template_values(client: TestClient):
     assert len(templates) == 3
 
     # Check Контакт рубильника template
-    contact = next(
-        (t for t in templates if t["name"] == "Контакт рубильника"), None
-    )
+    contact = next((t for t in templates if t["name"] == "Контакт рубильника"), None)
     assert contact is not None
     assert contact["short_name"] == "Контакт рубильника"
     assert contact["default_sticker_id"] == 3

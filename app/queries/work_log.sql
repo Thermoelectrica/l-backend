@@ -1,9 +1,9 @@
--- name: get_by_id(work_log_id)^
+-- name: get_by_id(id)^
 -- Get work log by ID
 SELECT id, started_at, completed_at, installation_percentage, 
        inspector_id, plant_id, is_deleted, server_modified_at
 FROM lesiv.work_log
-WHERE id = :work_log_id;
+WHERE id = :id;
 
 -- name: get_by_plant_id(plant_id, modified_since)
 -- Get all work logs for plant (full data for aggregates)

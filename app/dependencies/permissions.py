@@ -1,9 +1,11 @@
 """Permission dependencies for FastAPI endpoints"""
 
-from uuid import UUID
 from typing import Callable, Optional
-from fastapi import Depends, HTTPException, status
+from uuid import UUID
+
 import asyncpg
+from fastapi import Depends, HTTPException, status
+
 from app.database import get_db_connection
 from app.dependencies.auth import get_current_user
 from app.models.inspector import Inspector
@@ -16,11 +18,11 @@ def get_permission_service(
 ) -> PermissionService:
     """
     Dependency to provide PermissionService instance.
-    
+
     Args:
         conn: Database connection
         current_user: Current authenticated user
-        
+
     Returns:
         PermissionService instance configured for current user
     """
@@ -30,7 +32,7 @@ def get_permission_service(
 def require_plant_access(plant_id: UUID):
     """
     Dependency factory that creates a dependency to check plant access.
-    
+
     Usage:
         @router.get("/plant/by_id/{plant_id}")
         async def get_plant(
@@ -38,10 +40,10 @@ def require_plant_access(plant_id: UUID):
             _: None = Depends(require_plant_access)
         ):
             ...
-    
+
     Args:
         plant_id: UUID of the plant to check access for
-        
+
     Returns:
         Dependency function that checks plant access
     """
@@ -55,13 +57,11 @@ def require_plant_access(plant_id: UUID):
     return dependency
 
 
-def require_plant_access_for_entity(
-    entity_id: UUID, entity_type: str
-) -> Callable:
+def require_plant_access_for_entity(entity_id: UUID, entity_type: str) -> Callable:
     """
     Dependency factory that creates a dependency to check plant access
     for entities that belong to a plant (equipment, inspection, defect, image).
-    
+
     Usage:
         @router.get("/equipment/by_id/{equipment_id}")
         async def get_equipment(
@@ -69,11 +69,11 @@ def require_plant_access_for_entity(
             _: None = Depends(require_plant_access_for_entity(equipment_id, "equipment"))
         ):
             ...
-    
+
     Args:
         entity_id: UUID of the entity (equipment, inspection, defect, or image)
         entity_type: Type of entity ("equipment", "inspection", "defect", or "image")
-        
+
     Returns:
         Dependency function that resolves plant_id and checks access
     """

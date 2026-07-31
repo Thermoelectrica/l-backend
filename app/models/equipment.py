@@ -1,11 +1,11 @@
 """Equipment aggregate models"""
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
-from enum import Enum
+
 from pydantic import BaseModel, Field
-from app.models import ConflictDetail, ConflictError
 
 
 class DefectStatus(str, Enum):
@@ -28,7 +28,7 @@ class ControlPoint(BaseModel):
 
 class Defect(BaseModel):
     """Defect within equipment (child entity) - DEPRECATED: Use defect router instead
-    
+
     Kept for backwards compatibility. Fields are preserved but defects are now managed
     via the separate defect router.
     """

@@ -1,14 +1,17 @@
 """Log repository"""
 
 import json
+
 import aiosql
-from app.models.log import LogEntry
+from aiosql.queries import Queries
+
 from app.config import settings
+from app.models.log import LogEntry
 from app.utils.async_wrapper import AsyncWrapper
 
 # Load queries with configurable driver
 _queries = aiosql.from_path("app/queries/log.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class LogRepository:

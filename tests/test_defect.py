@@ -1,9 +1,10 @@
 """Integration tests for Defect API"""
 
-import pytest
-from uuid import uuid4
-from fastapi.testclient import TestClient
 from copy import deepcopy
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
 
 PUT_BODY_TEMPLATE = {
     "equipment_id": None,  # Will be set in fixture
@@ -85,9 +86,7 @@ def defect_data(defect_id, equipment_id):
     return data
 
 
-def test_create_defect(
-    client: TestClient, defect_data, defect_id, setup_plant_and_equipment
-):
+def test_create_defect(client: TestClient, defect_data, defect_id, setup_plant_and_equipment):
     """Test creating a new defect (server_modified_at ignored for new defects)"""
     response = client.put("/defect", json=defect_data)
     assert response.status_code == 200
@@ -114,7 +113,7 @@ def test_create_defect_with_null_server_modified_at(
         "is_deleted": False,
         "server_modified_at": None,  # Null for new defects
     }
-    
+
     response = client.put("/defect", json=defect_data)
     assert response.status_code == 200
 
@@ -125,9 +124,7 @@ def test_create_defect_with_null_server_modified_at(
     assert data["server_modified_at"] is not None  # Server should set it
 
 
-def test_get_defect(
-    client: TestClient, defect_data, defect_id, setup_plant_and_equipment
-):
+def test_get_defect(client: TestClient, defect_data, defect_id, setup_plant_and_equipment):
     """Test retrieving a defect using by_id endpoint"""
     client.put("/defect", json=defect_data)
 
@@ -146,9 +143,7 @@ def test_get_nonexistent_defect(client: TestClient):
     assert response.status_code == 404
 
 
-def test_get_all_defects(
-    client: TestClient, defect_data, setup_plant_and_equipment, equipment_id
-):
+def test_get_all_defects(client: TestClient, defect_data, setup_plant_and_equipment, equipment_id):
     """Test retrieving all defects using /all endpoint"""
     defect_id_2 = uuid4()
 
@@ -174,9 +169,7 @@ def test_get_all_defects(
     assert str(defect_id_2) in defect_ids
 
 
-def test_get_defects_by_plant_id(
-    client: TestClient, defect_data, plant_id, setup_plant_and_equipment
-):
+def test_get_defects_by_plant_id(client: TestClient, defect_data, plant_id, setup_plant_and_equipment):
     """Test retrieving defects by plant ID"""
     client.put("/defect", json=defect_data)
 
@@ -192,9 +185,7 @@ def test_get_defects_by_plant_id(
     assert str(defect_data["id"]) in defect_ids
 
 
-def test_update_defect_with_correct_timestamp(
-    client: TestClient, defect_data, setup_plant_and_equipment
-):
+def test_update_defect_with_correct_timestamp(client: TestClient, defect_data, setup_plant_and_equipment):
     """Test updating a defect with correct server_modified_at"""
     create_response = client.put("/defect", json=defect_data)
     assert create_response.status_code == 200
@@ -216,9 +207,7 @@ def test_update_defect_with_correct_timestamp(
     assert data["server_modified_at"] != server_modified_at
 
 
-def test_concurrent_modification_detected(
-    client: TestClient, defect_data, setup_plant_and_equipment
-):
+def test_concurrent_modification_detected(client: TestClient, defect_data, setup_plant_and_equipment):
     """Test that concurrent modification is detected with 409 error"""
     create_response = client.put("/defect", json=defect_data)
     assert create_response.status_code == 200
@@ -236,9 +225,7 @@ def test_concurrent_modification_detected(
     assert "server_modified_at" in error_data
 
 
-def test_force_mode_ignores_timestamp(
-    client: TestClient, defect_data, setup_plant_and_equipment
-):
+def test_force_mode_ignores_timestamp(client: TestClient, defect_data, setup_plant_and_equipment):
     """Test that force=true ignores server_modified_at validation"""
     client.put("/defect", json=defect_data)
 
@@ -253,9 +240,7 @@ def test_force_mode_ignores_timestamp(
     assert data["unit_name"] == "Updated Unit"
 
 
-def test_defect_with_defect_type_id(
-    client: TestClient, defect_data, setup_plant_and_equipment
-):
+def test_defect_with_defect_type_id(client: TestClient, defect_data, setup_plant_and_equipment):
     """Test creating a defect with defect_type_id"""
     defect_data["defect_type_id"] = 1
 
@@ -266,9 +251,7 @@ def test_defect_with_defect_type_id(
     assert data["defect_type_id"] == 1
 
 
-def test_is_deleted_honored_for_defect(
-    client: TestClient, defect_data, setup_plant_and_equipment
-):
+def test_is_deleted_honored_for_defect(client: TestClient, defect_data, setup_plant_and_equipment):
     """Test that is_deleted value is honored for defects"""
     defect_data["unit_name"] = "Deleted Defect"
     defect_data["is_deleted"] = True
@@ -336,9 +319,7 @@ def test_get_defects_by_plant_with_modified_since_filter(
     assert str(defect_id_2) not in filtered_ids
 
 
-def test_equipment_defects_always_empty(
-    client: TestClient, defect_data, equipment_id, setup_plant_and_equipment
-):
+def test_equipment_defects_always_empty(client: TestClient, defect_data, equipment_id, setup_plant_and_equipment):
     """Test that equipment endpoint always returns empty defects list for backwards compatibility"""
     # Create a defect via defect router
     client.put("/defect", json=defect_data)

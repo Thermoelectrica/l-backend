@@ -1,10 +1,11 @@
 """Integration tests for Image API"""
 
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
-from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
 
 
 def test_create_image(client: TestClient, plant_id, seed_test_plant_and_facility):
@@ -152,9 +153,7 @@ def test_image_types(client: TestClient, plant_id, seed_test_plant_and_facility)
         assert response.json()["image_type"] == image_type
 
 
-def test_concurrent_modification_error(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_concurrent_modification_error(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Test that concurrent modification is detected"""
     image_id = uuid4()
 
@@ -189,9 +188,7 @@ def test_concurrent_modification_error(
     assert "modified by another client" in error_data["message"].lower()
 
 
-def test_force_mode_ignores_timestamp(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_force_mode_ignores_timestamp(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Test that force=true ignores server_modified_at validation"""
     image_id = uuid4()
 
@@ -218,9 +215,7 @@ def test_force_mode_ignores_timestamp(
     assert data["original_file_name"] == "forced_update.jpg"
 
 
-def test_missing_server_modified_at_on_update(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_missing_server_modified_at_on_update(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Test that updating existing image without server_modified_at fails"""
     image_id = uuid4()
 
@@ -261,9 +256,7 @@ def facility_id():
     return uuid4()
 
 
-def test_get_images_by_plant_id(
-    client: TestClient, plant_id, facility_id, seed_test_plant_and_facility
-):
+def test_get_images_by_plant_id(client: TestClient, plant_id, facility_id, seed_test_plant_and_facility):
     """Test retrieving all images for a plant (joins through equipment and facility)"""
 
     # Create equipment for the plant
@@ -423,9 +416,7 @@ def test_invalid_plant_id(client: TestClient):
 # ── upload_status tests ────────────────────────────────────────────────────────
 
 
-def test_new_image_has_unknown_upload_status(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_new_image_has_unknown_upload_status(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Newly created image must have upload_status == UNKNOWN"""
     image_data = {
         "id": str(uuid4()),
@@ -441,9 +432,7 @@ def test_new_image_has_unknown_upload_status(
     assert response.json()["upload_status"] == "UNKNOWN"
 
 
-def test_put_does_not_overwrite_upload_status(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_put_does_not_overwrite_upload_status(client: TestClient, plant_id, seed_test_plant_and_facility):
     """PUT /image must never overwrite upload_status set by the S3 callback"""
     image_id = uuid4()
     image_data = {
@@ -498,9 +487,7 @@ def test_put_does_not_overwrite_upload_status(
     assert update_resp.json()["upload_status"] == "UPLOADED"
 
 
-def test_s3_upload_callback_sets_uploaded_status(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_s3_upload_callback_sets_uploaded_status(client: TestClient, plant_id, seed_test_plant_and_facility):
     """POST /image/s3-upload-callback sets upload_status=UPLOADED and server_uploaded_at"""
     image_id = uuid4()
     image_data = {
@@ -548,9 +535,7 @@ def test_s3_upload_callback_sets_uploaded_status(
     assert data["server_uploaded_at"] is not None
 
 
-def test_s3_upload_callback_with_extension_in_object_id(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_s3_upload_callback_with_extension_in_object_id(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Callback object_id with .jpg extension is handled correctly"""
     image_id = uuid4()
     image_data = {
@@ -590,9 +575,7 @@ def test_s3_upload_callback_with_extension_in_object_id(
     assert get_resp.json()["upload_status"] == "UPLOADED"
 
 
-def test_s3_upload_callback_skips_non_object_create_events(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_s3_upload_callback_skips_non_object_create_events(client: TestClient, plant_id, seed_test_plant_and_facility):
     """Non-ObjectCreate events are skipped and not counted as processed"""
     image_id = uuid4()
     image_data = {
@@ -643,9 +626,7 @@ def test_s3_upload_callback_empty_messages(client: TestClient):
     assert body["status"] == "skipped"
 
 
-def test_get_upload_url_returns_presigned_url(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_get_upload_url_returns_presigned_url(client: TestClient, plant_id, seed_test_plant_and_facility):
     """GET /image/{id}/upload_url returns a presigned upload URL"""
     image_id = uuid4()
     image_data = {
@@ -685,9 +666,7 @@ def test_get_upload_url_for_nonexistent_image(client: TestClient):
     assert response.status_code == 404
 
 
-def test_check_image_exists_true(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_check_image_exists_true(client: TestClient, plant_id, seed_test_plant_and_facility):
     """GET /image/{id}/exists returns exists=true when S3 object is present"""
     image_id = uuid4()
     image_data = {
@@ -711,9 +690,7 @@ def test_check_image_exists_true(
     assert response.json()["exists"] is True
 
 
-def test_check_image_exists_false(
-    client: TestClient, plant_id, seed_test_plant_and_facility
-):
+def test_check_image_exists_false(client: TestClient, plant_id, seed_test_plant_and_facility):
     """GET /image/{id}/exists returns exists=false when S3 object is absent"""
     image_id = uuid4()
     image_data = {

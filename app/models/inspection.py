@@ -1,11 +1,12 @@
 """Inspection aggregate models"""
 
 from datetime import datetime
+from decimal import Decimal
+from enum import Enum
 from typing import Optional
 from uuid import UUID
-from enum import Enum
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class InspectionStatus(str, Enum):
@@ -43,7 +44,7 @@ class ImageLink(BaseModel):
 class InspectionStep(BaseModel):
     """Inspection step within inspection (child entity)"""
 
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     id: UUID
     started_at: datetime

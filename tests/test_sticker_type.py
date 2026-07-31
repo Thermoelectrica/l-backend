@@ -1,6 +1,5 @@
 """Integration tests for StickerType API"""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -17,10 +16,7 @@ def test_get_all_sticker_types(client: TestClient):
     assert len(items) == 10
 
     # Verify structure of first item
-    assert all(
-        key in items[0]
-        for key in ["id", "name", "is_deleted", "server_modified_at", "temp_ranges"]
-    )
+    assert all(key in items[0] for key in ["id", "name", "is_deleted", "server_modified_at", "temp_ranges"])
 
 
 # Tests for modified_since filter

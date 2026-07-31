@@ -1,15 +1,17 @@
 """Pytest configuration and fixtures"""
 
+import os
+import subprocess
+from pathlib import Path
+
+import asyncpg
 import pytest
 import pytest_asyncio
-import asyncpg
-import subprocess
-import os
-from pathlib import Path
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from app.main import app
+
 from app.config import settings
+from app.main import app
 
 # Load test-specific environment variables from .env.test
 test_env_file = Path(__file__).parent.parent / ".env.test"
@@ -25,34 +27,34 @@ async def seed_test_data():
     """Seed test data once per test session using Flyway migrations and test data script."""
     # Verify Flyway credentials are set in environment variables
     # These should be set to a user with schema management permissions
-    if not all([os.getenv('FLYWAY_URL'), os.getenv('FLYWAY_USER'), os.getenv('FLYWAY_PASSWORD')]):
+    if not all(
+        [
+            os.getenv("FLYWAY_URL"),
+            os.getenv("FLYWAY_USER"),
+            os.getenv("FLYWAY_PASSWORD"),
+        ]
+    ):
         raise ValueError(
             "Flyway credentials not found in environment variables. "
             "Please set FLYWAY_URL, FLYWAY_USER, and FLYWAY_PASSWORD in .env.test file"
         )
-    
+
     # Run Flyway migrate from the db directory
     # Flyway will read credentials from environment variables
     try:
-        result = subprocess.run(
-            ['flyway', 'migrate'],
-            cwd='db',
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        result = subprocess.run(["flyway", "migrate"], cwd="db", capture_output=True, text=True, check=True)
         print(f"Flyway migration output: {result.stdout}")
     except subprocess.CalledProcessError as e:
         print(f"Flyway migration failed: {e.stderr}")
         raise
-    
+
     # Load test-specific data (test inspectors)
     # This is separate from migrations as it's test-only data
     test_data_script = Path(__file__).parent.parent / "scripts" / "init_test_data.sql"
     if test_data_script.exists():
         conn = await asyncpg.connect(settings.get_database_url())
         try:
-            with open(test_data_script, 'r') as f:
+            with open(test_data_script, "r") as f:
                 sql = f.read()
             await conn.execute(sql)
             print("Test data loaded successfully")
@@ -191,6 +193,7 @@ async def seed_test_equipment(request):
 @pytest_asyncio.fixture(scope="function")
 async def grant_plant_access():
     """Helper fixture to grant plant access to inspectors during tests."""
+
     async def _grant_access(plant_id, inspector_id):
         """Grant access to a plant for an inspector."""
         conn = await asyncpg.connect(settings.get_database_url())
@@ -206,7 +209,7 @@ async def grant_plant_access():
             )
         finally:
             await conn.close()
-    
+
     return _grant_access
 
 

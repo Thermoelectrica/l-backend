@@ -1,11 +1,13 @@
 """Tests for authentication endpoints"""
 
+from uuid import uuid4
+
+import asyncpg
 import pytest
 import pytest_asyncio
-import asyncpg
-from uuid import uuid4
-from app.services.auth import AuthService
+
 from app.config import settings
+from app.services.auth import AuthService
 
 
 @pytest.fixture
@@ -44,9 +46,7 @@ async def test_inspector(test_inspector_data):
         )
 
         if existing_id:
-            await conn.execute(
-                "DELETE FROM lesiv.tokens WHERE inspector_id = $1", existing_id
-            )
+            await conn.execute("DELETE FROM lesiv.tokens WHERE inspector_id = $1", existing_id)
             await conn.execute("DELETE FROM lesiv.inspector WHERE id = $1", existing_id)
 
         inspector_id = await conn.fetchval(
@@ -63,13 +63,11 @@ async def test_inspector(test_inspector_data):
         await conn.close()
 
     yield {"id": inspector_id, **test_inspector_data}
-    
+
     # Cleanup after test - use a fresh connection
     conn = await asyncpg.connect(settings.get_database_url())
     try:
-        await conn.execute(
-            "DELETE FROM lesiv.tokens WHERE inspector_id = $1", inspector_id
-        )
+        await conn.execute("DELETE FROM lesiv.tokens WHERE inspector_id = $1", inspector_id)
         await conn.execute("DELETE FROM lesiv.inspector WHERE id = $1", inspector_id)
     finally:
         await conn.close()
@@ -154,9 +152,7 @@ def test_refresh_token_success(client, test_inspector):
     refresh_token = login_data["refresh_token"]
 
     # Now refresh the token
-    refresh_response = client.post(
-        "/auth/refresh", json={"refresh_token": refresh_token}
-    )
+    refresh_response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
     assert refresh_response.status_code == 200
     refresh_data = refresh_response.json()
@@ -172,9 +168,7 @@ def test_refresh_token_success(client, test_inspector):
 
 def test_refresh_token_invalid(client):
     """Test refresh with invalid token"""
-    response = client.post(
-        "/auth/refresh", json={"refresh_token": "invalid_token_string"}
-    )
+    response = client.post("/auth/refresh", json={"refresh_token": "invalid_token_string"})
 
     assert response.status_code == 401
     assert "Invalid or expired refresh token" in response.json()["detail"]
@@ -198,16 +192,12 @@ def test_refresh_token_reuse_detection(client, test_inspector):
     old_refresh_token = login_response.json()["refresh_token"]
 
     # Refresh once (this revokes old_refresh_token)
-    refresh_response = client.post(
-        "/auth/refresh", json={"refresh_token": old_refresh_token}
-    )
+    refresh_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
 
     assert refresh_response.status_code == 200
 
     # Try to reuse the old token (should fail - theft detection)
-    reuse_response = client.post(
-        "/auth/refresh", json={"refresh_token": old_refresh_token}
-    )
+    reuse_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
 
     assert reuse_response.status_code == 401
 
@@ -305,6 +295,7 @@ def test_multiple_devices_same_user(client, test_inspector):
 def test_jwt_token_structure(client, test_inspector):
     """Test that JWT tokens have correct structure and can be decoded"""
     import jwt
+
     from app.config import settings
 
     device_id = str(uuid4())
@@ -377,28 +368,18 @@ def test_middleware_authentication_flow(enable_auth, client, test_inspector):
     access_token = login_response.json()["access_token"]
 
     # Test that middleware accepts the token with Bearer prefix
-    response = client.get(
-        "/inspector/all", headers={"Authorization": f"Bearer {access_token}"}
-    )
+    response = client.get("/inspector/all", headers={"Authorization": f"Bearer {access_token}"})
 
     # Should not return 401 (authentication should succeed)
-    assert (
-        response.status_code != 401
-    ), f"Middleware rejected valid token: {response.json()}"
+    assert response.status_code != 401, f"Middleware rejected valid token: {response.json()}"
 
     # Test with malformed token
-    response = client.get(
-        "/inspector/all", headers={"Authorization": "Bearer malformed_token"}
-    )
-    assert (
-        response.status_code == 401
-    ), f"Expected 401 but got {response.status_code}: {response.json()}"
+    response = client.get("/inspector/all", headers={"Authorization": "Bearer malformed_token"})
+    assert response.status_code == 401, f"Expected 401 but got {response.status_code}: {response.json()}"
 
     # Test without Bearer prefix - middleware accepts both formats, so this should succeed
     response = client.get("/inspector/all", headers={"Authorization": access_token})
-    assert (
-        response.status_code != 401
-    ), f"Middleware rejected valid token without Bearer prefix: {response.json()}"
+    assert response.status_code != 401, f"Middleware rejected valid token without Bearer prefix: {response.json()}"
 
     # Test without Authorization header - should fail with 401
     response = client.get("/inspector/all")
@@ -408,7 +389,6 @@ def test_middleware_authentication_flow(enable_auth, client, test_inspector):
 def test_token_validation_with_auth_service(test_inspector):
     """Test that AuthService properly validates tokens it creates"""
     from app.services.auth import AuthService
-    from uuid import UUID
 
     auth_service = AuthService()
     device_id = uuid4()
@@ -471,15 +451,11 @@ def test_change_password_success(client, test_inspector):
     assert change_data["refresh_token"] != old_refresh_token
 
     # Verify old refresh token is revoked
-    old_refresh_response = client.post(
-        "/auth/refresh", json={"refresh_token": old_refresh_token}
-    )
+    old_refresh_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
     assert old_refresh_response.status_code == 401
 
     # Verify new refresh token works
-    new_refresh_response = client.post(
-        "/auth/refresh", json={"refresh_token": change_data["refresh_token"]}
-    )
+    new_refresh_response = client.post("/auth/refresh", json={"refresh_token": change_data["refresh_token"]})
     assert new_refresh_response.status_code == 200
 
     # Verify can't login with old password
@@ -625,9 +601,7 @@ def test_change_password_revokes_all_tokens(client, test_inspector):
 
     # Verify new token works
     new_refresh_token = change_response.json()["refresh_token"]
-    new_refresh_response = client.post(
-        "/auth/refresh", json={"refresh_token": new_refresh_token}
-    )
+    new_refresh_response = client.post("/auth/refresh", json={"refresh_token": new_refresh_token})
     assert new_refresh_response.status_code == 200
 
 

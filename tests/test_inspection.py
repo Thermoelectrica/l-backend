@@ -1,9 +1,10 @@
 """Integration tests for Inspection API"""
 
-import pytest
-from uuid import uuid4
-from fastapi.testclient import TestClient
 from copy import deepcopy
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
 
 PUT_BODY_TEMPLATE = {
     "inspector_id": 1,
@@ -71,9 +72,7 @@ def image_id_1():
 
 
 @pytest.fixture
-def inspection_data(
-    inspection_id, equipment_id, step_id_1, plant_id, facility_id, seed_test_equipment
-):
+def inspection_data(inspection_id, equipment_id, step_id_1, plant_id, facility_id, seed_test_equipment):
     data = deepcopy(PUT_BODY_TEMPLATE)
     data["id"] = str(inspection_id)
     data["equipment_id"] = str(equipment_id)
@@ -81,9 +80,7 @@ def inspection_data(
     return data
 
 
-def test_create_inspection(
-    client: TestClient, inspection_data, inspection_id, equipment_id
-):
+def test_create_inspection(client: TestClient, inspection_data, inspection_id, equipment_id):
     """Test creating a new inspection with steps"""
     response = client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
@@ -275,9 +272,7 @@ def test_add_image_links_to_step(client: TestClient, inspection_data, image_id_1
     inspection_data["server_modified_at"] = server_modified_at
 
     # Add image link to first step
-    inspection_data["steps"][0]["image_links"] = [
-        {"image_id": str(image_id_1), "is_deleted": False}
-    ]
+    inspection_data["steps"][0]["image_links"] = [{"image_id": str(image_id_1), "is_deleted": False}]
 
     response = client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
@@ -291,9 +286,7 @@ def test_add_image_links_to_step(client: TestClient, inspection_data, image_id_1
 def test_remove_image_links_from_step(client: TestClient, inspection_data, image_id_1):
     """Test removing image links from inspection step (logical deletion)"""
     # Create with image link
-    inspection_data["steps"][0]["image_links"] = [
-        {"image_id": str(image_id_1), "is_deleted": False}
-    ]
+    inspection_data["steps"][0]["image_links"] = [{"image_id": str(image_id_1), "is_deleted": False}]
 
     create_response = client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
@@ -370,8 +363,6 @@ def test_get_inspections_by_plant_id(client: TestClient, inspection_data, plant_
     # Create another inspection for different equipment in different plant
     inspection_id_2 = uuid4()
     equipment_id_2 = uuid4()
-    plant_id_2 = uuid4()
-    facility_id_2 = uuid4()
 
     inspection_data_2 = deepcopy(PUT_BODY_TEMPLATE)
     inspection_data_2["id"] = str(inspection_id_2)
@@ -449,9 +440,7 @@ def test_concurrent_modification_detection(client: TestClient, inspection_data):
     assert error_data["server_modified_at"] == client_b_timestamp
 
 
-def test_multiple_operations_in_single_request(
-    client: TestClient, inspection_data, step_id_1
-):
+def test_multiple_operations_in_single_request(client: TestClient, inspection_data, step_id_1):
     """Test simultaneously add, update, and delete steps in one PUT"""
     step_id_2 = uuid4()
 
@@ -549,9 +538,7 @@ def test_multiple_operations_in_single_request(
     assert s3["is_deleted"] is False
 
 
-def test_get_all_inspections_with_modified_since_filter(
-    client: TestClient, inspection_data, equipment_id
-):
+def test_get_all_inspections_with_modified_since_filter(client: TestClient, inspection_data, equipment_id):
     """Test filtering inspections by modified_since parameter"""
     import time
 
@@ -633,9 +620,7 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     assert str(inspection_id_2) in inspection_ids
 
     # Get inspections modified after timestamp1 - should only return inspection 2
-    response = client.get(
-        f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp1}"
-    )
+    response = client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_inspections = response.json()
     filtered_ids = [i["id"] for i in filtered_inspections]
@@ -643,9 +628,7 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     assert str(inspection_id_2) in filtered_ids
 
     # Get inspections modified after timestamp2 - should return none
-    response = client.get(
-        f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp2}"
-    )
+    response = client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_inspections = response.json()
     assert len(filtered_inspections) == 0
@@ -749,9 +732,7 @@ def test_empty_steps_list_with_force(client: TestClient, inspection_data):
         assert step["is_deleted"] is True
 
 
-def test_deleted_steps_persist_through_updates(
-    client: TestClient, inspection_data, step_id_1
-):
+def test_deleted_steps_persist_through_updates(client: TestClient, inspection_data, step_id_1):
     """Test deleted steps remain in GET response after updates"""
     step_id_2 = uuid4()
 

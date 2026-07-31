@@ -1,21 +1,21 @@
 """Plant repository"""
 
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timezone
+
 import aiosql
+from aiosql.queries import Queries
+
 from app.config import settings
-from app.utils.async_wrapper import AsyncWrapper
 from app.constants import DEFAULT_MODIFIED_SINCE
-from app.models.plant import Plant, Facility, PlantListItem, PlantListResponse
-from app.models import ConflictError, ConflictDetail
-from app.exceptions import ConcurrentModificationError
-from app.utils.datetime_utils import truncate_to_milliseconds
-from app.utils.claim_utils import is_claim_stale
+from app.models.plant import Facility, Plant, PlantListItem, PlantListResponse
+from app.utils.async_wrapper import AsyncWrapper
+from app.utils.db_utils import CollectionConfig, OptimisticLockingValidator
 
 # Load queries from single file
 _queries = aiosql.from_path("app/queries/plant.sql", settings.db_driver)
-queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries
+queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
 class PlantRepository:
@@ -29,18 +29,13 @@ class PlantRepository:
             return None
 
         # Get facilities
-        facility_rows = [
-            row async for row in queries.get_facilities(conn, plant_id=plant_id)
-        ]
+        facility_rows = [row async for row in queries.get_facilities(conn, plant_id=plant_id)]
         facilities = []
 
         for facility_row in facility_rows:
             # Get equipment IDs for this facility
             equipment_rows = [
-                row
-                async for row in queries.get_equipment_ids_by_facility(
-                    conn, facility_id=facility_row["id"]
-                )
+                row async for row in queries.get_equipment_ids_by_facility(conn, facility_id=facility_row["id"])
             ]
             equipment_ids = [row["id"] for row in equipment_rows]
 
@@ -49,14 +44,9 @@ class PlantRepository:
 
         return Plant(**plant_row, facilities=facilities)
 
-    async def get_all(
-        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
-    ) -> PlantListResponse:
+    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> PlantListResponse:
         """Get all plants as lightweight list, optionally filtered by modification date"""
-        plant_rows = [
-            row
-            async for row in queries.get_all_plants(conn, modified_since=modified_since)
-        ]
+        plant_rows = [row async for row in queries.get_all_plants(conn, modified_since=modified_since)]
         plants = [PlantListItem(**row) for row in plant_rows]
         return PlantListResponse(items=plants)
 
@@ -82,62 +72,17 @@ class PlantRepository:
         new_server_modified_at = datetime.now(timezone.utc)
 
         if current and not (force or settings.disable_optimistic_locking):
-            # Validate server_modified_at for existing plants
-            if plant.server_modified_at is None:
-                raise ConcurrentModificationError(
-                    ConflictError(
-                        message="server_modified_at is required for updating existing plant",
-                        server_modified_at=current.server_modified_at,
-                        conflicts=[
-                            ConflictDetail(
-                                field="server_modified_at",
-                                message="Missing server_modified_at in request",
-                            )
-                        ],
+            OptimisticLockingValidator.validate_object(
+                server_obj=current,
+                client_obj=plant,
+                collection_configs=[
+                    CollectionConfig(
+                        server_collection=current.facilities,
+                        client_collection=plant.facilities,
+                        collection_name="facilities",
                     )
-                )
-
-            if truncate_to_milliseconds(
-                plant.server_modified_at
-            ) != truncate_to_milliseconds(current.server_modified_at):
-                raise ConcurrentModificationError(
-                    ConflictError(
-                        message="Plant was modified by another client",
-                        server_modified_at=current.server_modified_at,
-                        client_modified_at=plant.server_modified_at,
-                        conflicts=[
-                            ConflictDetail(
-                                field="server_modified_at",
-                                message="Timestamp mismatch",
-                                server_value=current.server_modified_at.isoformat(),
-                                client_value=plant.server_modified_at.isoformat(),
-                            )
-                        ],
-                    )
-                )
-
-            # Check for extra facilities on server
-            current_facility_ids = {
-                f.id for f in current.facilities if not f.is_deleted
-            }
-            incoming_facility_ids = {f.id for f in plant.facilities}
-            extra_facility_ids = current_facility_ids - incoming_facility_ids
-
-            if extra_facility_ids:
-                raise ConcurrentModificationError(
-                    ConflictError(
-                        message="Extra child facilities exist on server",
-                        server_modified_at=current.server_modified_at,
-                        client_modified_at=plant.server_modified_at,
-                        extra_child_ids=list(extra_facility_ids),
-                        conflicts=[
-                            ConflictDetail(
-                                field="facilities",
-                                message=f"Server has {len(extra_facility_ids)} extra facilities not in client request",
-                            )
-                        ],
-                    )
-                )
+                ],
+            )
 
         # Upsert plant (claim fields are managed separately via claim/release endpoints)
         await queries.upsert_plant(
@@ -169,25 +114,24 @@ class PlantRepository:
         """
         Claim plant for editing (must be called within transaction).
         Updates server_modified_at for sync purposes.
-        
+
         Returns:
             - True if claim succeeded
             - False if plant is claimed by another user and not stale
             - None if equipment is not found
         """
-        
+
         # Get current plant state
         current = await self.get_by_id(conn, plant_id)
         if not current:
             return None
-        
-        
+
         # Check if claiming is allowed
         if current.claimed_by_user_id is not None and current.claimed_by_user_id != user_id:
             # Plant is claimed by another user - check if stale
             if not current.is_stale:
                 return False
-        
+
         # Claim is allowed - update the claim and server_modified_at
         now = datetime.now(timezone.utc)
         result = await queries.claim_plant(
@@ -203,24 +147,18 @@ class PlantRepository:
             success = result > 0
         else:
             success = result is not None and "0" not in result
-        
+
         return success
 
     async def release(self, conn, plant_id: UUID) -> bool:
         """Release plant (must be called within transaction). Updates server_modified_at for sync purposes."""
-        result = await queries.release_plant(
-            conn,
-            id=plant_id,
-            server_modified_at=datetime.now(timezone.utc)
-        )
+        result = await queries.release_plant(conn, id=plant_id, server_modified_at=datetime.now(timezone.utc))
         # asyncpg returns string like "UPDATE 1", psycopg2 returns int (row count)
         if isinstance(result, int):
             return result > 0
         return result is not None and "0" not in result
 
-    async def _sync_facilities(
-        self, conn, plant_id: UUID, facilities: list[Facility], force: bool
-    ):
+    async def _sync_facilities(self, conn, plant_id: UUID, facilities: list[Facility], force: bool):
         """
         Synchronize facilities: match by ID, add new, mark removed as deleted.
 
@@ -231,9 +169,7 @@ class PlantRepository:
             force: If True, mark extra facilities as deleted; if False, extras already validated
         """
         # Get existing facility IDs for this plant
-        existing_rows = [
-            row async for row in queries.get_facility_ids(conn, plant_id=plant_id)
-        ]
+        existing_rows = [row async for row in queries.get_facility_ids(conn, plant_id=plant_id)]
         existing_ids = {row["id"] for row in existing_rows}
 
         incoming_ids = {f.id for f in facilities}
@@ -243,9 +179,7 @@ class PlantRepository:
             if facility.id not in existing_ids:
                 # This is a new facility or existing facility from another plant
                 # Check if it exists in another plant
-                existing_plant_row = await queries.get_facility_plant_id(
-                    conn, facility_id=facility.id
-                )
+                existing_plant_row = await queries.get_facility_plant_id(conn, facility_id=facility.id)
                 if existing_plant_row and existing_plant_row["plant_id"] != plant_id:
                     raise ValueError(
                         f"Cannot transfer facility {facility.id} from another plant "

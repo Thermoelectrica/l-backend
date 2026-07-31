@@ -1,15 +1,17 @@
 """Authentication dependencies for FastAPI"""
 
-from typing import Annotated, Optional
-from fastapi import Depends, HTTPException, status, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
-import asyncpg
-from app.models.inspector import Inspector
-from app.models.auth import TokenPayload
-from app.services.auth import AuthService
-from app.database import get_db_connection
-from app.config import settings
 from datetime import datetime, timezone
+from typing import Annotated, Optional
+
+import asyncpg
+from fastapi import Depends, HTTPException, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+
+from app.config import settings
+from app.database import get_db_connection
+from app.models.auth import TokenPayload
+from app.models.inspector import Inspector
+from app.services.auth import AuthService
 
 # Support both Authorization header and X-Auth-Token header
 security = HTTPBearer(auto_error=False)
@@ -23,17 +25,17 @@ def extract_token_from_x_auth_header(x_auth_token: Optional[str]) -> Optional[st
     Supports both formats:
     - "Bearer <token>" (with Bearer prefix)
     - "<token>" (without Bearer prefix)
-    
+
     Returns the token string or None if invalid.
     """
     if not x_auth_token:
         return None
-    
+
     # Try to parse as "Bearer <token>"
     parts = x_auth_token.split()
     if len(parts) == 2 and parts[0].lower() == "bearer":
         return parts[1]
-    
+
     # Otherwise, treat the entire value as the token
     return x_auth_token
 
@@ -45,7 +47,7 @@ async def get_current_user(
 ) -> Inspector:
     """
     Dependency to get current authenticated user from JWT token.
-    
+
     Supports both Authorization: Bearer <token> and X-Auth-Token headers.
     X-Auth-Token can be in either format:
     - "Bearer <token>" (with Bearer prefix)
@@ -67,7 +69,7 @@ async def get_current_user(
         token = credentials.credentials
     else:
         token = extract_token_from_x_auth_header(x_auth_token)
-    
+
     # If token is provided, always try to validate it
     if token:
         # Verify and decode token
@@ -81,9 +83,10 @@ async def get_current_user(
                 if payload:
                     # Get inspector from database using the token's sub claim
                     from app.repositories.auth import AuthRepository
+
                     auth_repo = AuthRepository()
                     inspector_with_password = await auth_repo.get_inspector_by_id(conn, payload.sub)
-                    
+
                     if inspector_with_password:
                         # Return the user from database (trusting expired/revoked token)
                         return Inspector(
@@ -94,7 +97,7 @@ async def get_current_user(
                             is_deleted=False,
                             server_modified_at=inspector_with_password.server_modified_at,
                         )
-            
+
             # Token is invalid and we're not trusting invalid tokens
             if settings.require_auth:
                 # Auth is enabled, reject invalid token
@@ -143,7 +146,7 @@ async def get_token_payload(
     """
     Dependency to extract and validate token payload from JWT token.
     This provides access to both user_id (sub) and device_id (dev).
-    
+
     Supports both Authorization: Bearer <token> and X-Auth-Token headers.
     X-Auth-Token can be in either format:
     - "Bearer <token>" (with Bearer prefix)
@@ -165,7 +168,7 @@ async def get_token_payload(
         token = credentials.credentials
     else:
         token = extract_token_from_x_auth_header(x_auth_token)
-    
+
     # If token is provided, always try to validate it
     if token:
         payload = auth_service.verify_access_token(token)
@@ -178,7 +181,7 @@ async def get_token_payload(
                 if payload:
                     # Return the payload from the invalid token
                     return payload
-            
+
             # Token is invalid and we're not trusting invalid tokens
             if settings.require_auth:
                 # Auth is enabled, reject invalid token
@@ -193,7 +196,7 @@ async def get_token_payload(
         else:
             # Token is valid, return the payload
             return payload
-    
+
     # No token provided or invalid token with auth disabled
     if settings.require_auth:
         # Auth is enabled, token is required

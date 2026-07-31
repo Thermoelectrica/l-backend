@@ -1,11 +1,13 @@
 """DefectType router"""
 
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
+
 from app.constants import DEFAULT_MODIFIED_SINCE
+from app.database import get_db_connection
 from app.models.defect_type import DefectTypeListResponse
 from app.repositories.defect_type import DefectTypeRepository
-from app.database import get_db_connection
 
 router = APIRouter(prefix="/defect-type", tags=["defect-type"])
 defect_type_repo = DefectTypeRepository()
