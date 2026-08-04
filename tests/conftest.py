@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from app.config import settings
 from app.main import app
@@ -45,7 +46,10 @@ async def seed_test_data():
         result = subprocess.run(["flyway", "migrate"], cwd="db", capture_output=True, text=True, check=True)
         print(f"Flyway migration output: {result.stdout}")
     except subprocess.CalledProcessError as e:
-        print(f"Flyway migration failed: {e.stderr}")
+        # Выводим подробную ошибку для отладки
+        print(f"❌ Flyway migration failed with exit code {e.returncode}") # development
+        print(f"STDOUT: {e.stdout}")
+        print(f"STDERR: {e.stderr}")
         raise
 
     # Load test-specific data (test inspectors)
@@ -218,3 +222,88 @@ def client():
     """Create test client - FastAPI TestClient handles lifespan events."""
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_sticker_session():
+    """
+    Асинхронная фикстура для тестирования, обеспечивающая изоляцию данных.
+    1. Создает новое соединение с базой данных.
+    2. Начинает новую транзакцию.
+    3. Заполняет базу тестовыми данными.
+    4. Возвращает (yield) объект соединения, чтобы тесты могли его использовать.
+    5. После завершения теста (выхода из yield) явно выполняет ROLLBACK,
+    чтобы откатить все изменения и не загрязнить БД.
+    6. Закрывает соединение в блоке finally.
+    """
+    conn = await asyncpg.connect(settings.get_database_url())
+    tr = conn.transaction()
+    await tr.start()
+
+    try:
+        await conn.execute(
+            """INSERT INTO lesiv.sticker_installation (
+                   id, control_point_id, inspector_id, kind, sticker_type_id,
+                   sticker_color, from_sticker_type_id, count, installed_at
+                ) VALUES (
+                   '4fa80f53-5717-4562-b3fc-2c963f66afa9', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                   1, 'INSTALLATION', 0, 'YELLOW', 0, 10, '2026-07-24T15:42:47.246Z'
+                ),
+                (
+                   '4fa80f53-5717-4562-b3fc-2c963f66afa8', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                   2, 'INSTALLATION', 0, 'YELLOW', 0, 3, '2026-07-24T15:42:47.246Z'
+                ),
+                (
+                   '4fa80f53-5717-4562-b3fc-2c963f66afa7', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                   3, 'INSTALLATION', 0, 'YELLOW', 0, 1, '2026-07-24T15:42:47.246Z'
+                ),
+                (
+                   '4fa80f53-5717-4562-b3fc-2c963f66afa1', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                   1, 'INSTALLATION', 0, 'YELLOW', 0, 100, '2026-07-24T15:42:47.246Z'
+                ),
+                (
+                   '4fa80f53-5717-4562-b3fc-2c963f66afa2', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                   51, 'INSTALLATION', 0, 'YELLOW', 0, 100, '2026-07-24T15:42:47.246Z'
+                )
+                ON CONFLICT (id) DO NOTHING;
+
+               INSERT INTO lesiv.plant (
+                   id, name, server_modified_at
+                ) VALUES ('15b28768-8bca-4c3b-89a1-ed92d9a8efe2', 'Test Plant', CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO NOTHING;
+
+               INSERT INTO lesiv.inspector_plant_access (
+                   inspector_id, plant_id
+                ) VALUES (1, '15b28768-8bca-4c3b-89a1-ed92d9a8efe2')
+                ON CONFLICT (inspector_id, plant_id) DO NOTHING;
+            """
+        )
+        yield conn
+
+    except Exception:
+        await tr.rollback()
+        raise
+    else:
+        await tr.rollback()
+    finally:
+        await conn.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def sticker_client(db_sticker_session):
+    """
+    Асинхронный клиент для тестирования API.
+    Использует dependency_overrides для подмены БД.
+    """
+    from app.database import get_db_connection
+
+    async def mock_get_db():
+        return db_sticker_session
+
+    app.dependency_overrides[get_db_connection] = mock_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()

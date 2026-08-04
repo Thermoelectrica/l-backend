@@ -28,13 +28,6 @@ JOIN lesiv.equipment e ON i.equipment_id = e.id
 JOIN lesiv.facility f ON e.facility_id = f.id
 WHERE i.id = :inspection_id;
 
--- name: get_plant_from_inspector(inspector_id)^
--- Get plant_id from inspector_id
-SELECT pt.id AS plant_id
-FROM lesiv.plant pt
-JOIN lesiv.inspector insp ON pt.claimed_by_user_id = insp.id
-WHERE insp.id = :inspector_id;
-
 -- name: get_plant_from_defect(defect_id)^
 -- Get plant_id from defect_id
 SELECT f.plant_id

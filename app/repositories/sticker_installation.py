@@ -26,13 +26,16 @@ class StickerInstallationRepository:
     """Repository of Stickers methods"""
 
     async def get_all(
-        self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE
+            self,
+            conn,
+            modified_since: datetime = DEFAULT_MODIFIED_SINCE
     ) -> List[StickerInstallaionListItem]:
         """Get all stickers, optionally filtered by modification date"""
 
-        sticker_rows = [row async for row in queries.get_all_stickers(conn, modified_since=modified_since)]  # type: ignore
+        sticker_rows = [row async for row in queries.get_all_stickers(conn, modified_since=modified_since)] # type: ignore
         sticker_list = [StickerInstallaionListItem(**row) for row in sticker_rows]
         return sticker_list
+
 
     async def get_by_id(self, conn, sticker_id: UUID) -> Optional[StickerInstallationModel]:
         """Get sticker by id"""
@@ -41,6 +44,7 @@ class StickerInstallationRepository:
         if not sticker_row:
             return None
         return StickerInstallationModel(**sticker_row)
+
 
     async def get_by_plant_id(
         self, conn, plant_id: UUID, modified_since: datetime = DEFAULT_MODIFIED_SINCE
@@ -68,7 +72,7 @@ class StickerInstallationRepository:
             "sticker_type_id",
             "sticker_color",
             "from_sticker_type_id",
-            "count",
+            "count"
         ]
 
         # 1. Подготовить данные
@@ -81,7 +85,7 @@ class StickerInstallationRepository:
             data["sticker_color"] = sticker.sticker_color.value
 
         # 3. Вставить данные в таблицу
-        await queries.upsert_sticker(conn, **data)  # type: ignore
+        await queries.upsert_sticker(conn, **data) # type: ignore
 
         # 4. Получить сохранённую запись
         result = await queries.get_by_id(conn, id=sticker.id)

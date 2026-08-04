@@ -66,3 +66,4 @@ backend.zip
 # local development files
 entrypoint.py
 install-flyway.sh
+init-db.sql
