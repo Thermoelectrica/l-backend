@@ -8,13 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.constants import DEFAULT_MODIFIED_SINCE
 from app.database import get_db_connection
-from app.dependencies.ownership import get_ownership_validator
 from app.dependencies.permissions import get_permission_service
 from app.exceptions import ConcurrentModificationError
-from app.models.inspector import AccessLevel
 from app.models.sticker_installation import StickerInstallaionListResponse, StickerInstallationModel
 from app.repositories.sticker_installation import StickerInstallationRepository
-from app.services.ownership_validator import OwnershipValidator
 from app.services.permission_service import PermissionService
 
 logger = logging.getLogger(__name__)
@@ -29,7 +26,6 @@ async def get_all_stickers(
         description="Only return inspections modified after this timestamp",
     ),
     conn=Depends(get_db_connection),
-    permission_service: PermissionService = Depends(get_permission_service),
 ):
     """Get list of all stickers from DB"""
 
@@ -41,7 +37,6 @@ async def get_all_stickers(
 async def get_sticker_by_id(
     sticker_id: UUID,
     conn=Depends(get_db_connection),
-    permission_service: PermissionService = Depends(get_permission_service),
 ):
     """Get full sticker information by sticker id"""
 
@@ -70,44 +65,21 @@ async def get_stickers_by_plant_id(
 @router.put("", response_model=StickerInstallationModel)
 async def upsert_sticker(
     sticker: StickerInstallationModel,
-    force: bool = Query(
-        default=False,
-        description="If true, ignore server_modified_at and mark extra children as deleted",
-    ),
     conn=Depends(get_db_connection),
-    permission_service: PermissionService = Depends(get_permission_service),
-    ownership_validator: OwnershipValidator = Depends(get_ownership_validator),
 ):
     """
     Create sticker installation.
 
     Rules:
-    - force=false (default):
-      - Validates that no immutable fields (e.g., inspector_id, control_point_id, kind, etc.)
-        have changed for existing sticker
+      - Validates that no immutable fields
+        (e.g., inspector_id, control_point_id, kind, etc.) have changed for existing sticker
       - Rejects if such change is detected → returns 409 Conflict
       - Allows insert of new sticker with new id (no validation needed)
-    - force=true:
-      - Ignores validation of immutable fields (use with caution!)
-      - Overwrites existing record regardless of field changes
-    - Never allows "stealing" a sticker from another inspector (immutable inspector_id)
-    - Permission: User must have INSPECT access level and access to the plant
+      - Never allows "stealing" a sticker from another inspector (immutable inspector_id)
     """
     try:
         async with conn.transaction():
-            # Check access level (INSPECT required)
-            permission_service.require_access_level(AccessLevel.INSPECT)
-
-            # Check plant access via inspection
-            plant_id = await permission_service.get_plant_id_from_inspector(sticker.inspector_id)  # type: ignore
-            if plant_id:
-                await permission_service.require_plant_access(plant_id)
-
-            # Validate ownership before saving
-            # development Не совсе понял, нужно ли тут что-то делать....
-            # await ownership_validator.validate_inspection_ownership(sticker.inspector_id) # type: ignore
-
-            result = await sticker_installation_repo.save(conn, sticker, force=force)
+            result = await sticker_installation_repo.save(conn, sticker)
         return result
     except ConcurrentModificationError as e:
         logger.warning(

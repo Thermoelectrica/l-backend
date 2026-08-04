@@ -8,8 +8,8 @@
 -- ============================================================================
 
 -- Insert test inspectors with bcrypt hashed passwords
--- Password for all test users: "password123"
--- Hash generated with: bcrypt.hashpw(b"password123", bcrypt.gensalt(rounds=12))
+-- Password for all test users: 'password123'
+-- Hash generated with: bcrypt.hashpw(b'password123', bcrypt.gensalt(rounds=12))
 -- All test inspectors have MODIFY access level for testing
 
 INSERT INTO lesiv.inspector (id, full_name, username, password_hash, access_level, server_modified_at)
