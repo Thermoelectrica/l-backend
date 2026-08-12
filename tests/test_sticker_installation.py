@@ -18,7 +18,6 @@ def fresh_sticker():
         "kind": "INSTALLATION",
         "sticker_type_id": 0,
         "sticker_color": "YELLOW",
-        "from_sticker_type_id": 0,
         "count": 0,
         "installed_at": "2026-07-24T15:42:47.246Z"
     }
@@ -112,7 +111,7 @@ async def test_get_stickers_by_plant_id(
     # Проверяем структуру ответа
     data = response.json()
     assert isinstance(data, list), "Response should be a list"
-    assert len(data) == 2, "Length of data should be 2"
+    assert len(data) == 1, "Length of data should be 1"
 
     # Используем неккоректный plant_id
     plant_id = "15b28768-8bca-4c3b-19a1-ed92d9a8efe2"

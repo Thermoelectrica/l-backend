@@ -71,7 +71,6 @@ class StickerInstallationRepository:
             "kind",
             "sticker_type_id",
             "sticker_color",
-            "from_sticker_type_id",
             "count"
         ]
 
