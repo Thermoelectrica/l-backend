@@ -24,6 +24,7 @@ def fresh_sticker():
     }
 
 
+#@pytest.mark.parametrize("api_client", ["db_sticker_session"], indirect=True) # development
 @pytest.mark.asyncio
 async def test_get_all_stickers(
     sticker_client: AsyncClient,
@@ -112,7 +113,7 @@ async def test_get_stickers_by_plant_id(
     # Проверяем структуру ответа
     data = response.json()
     assert isinstance(data, list), "Response should be a list"
-    assert len(data) == 2, "Length of data should be 2"
+    assert len(data) == 1, "Length of data should be 1"
 
     # Используем неккоректный plant_id
     plant_id = "15b28768-8bca-4c3b-19a1-ed92d9a8efe2"

@@ -3,6 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 import asyncpg
 import pytest
@@ -21,6 +22,49 @@ if test_env_file.exists():
 
 # Disable authentication for all tests
 settings.require_auth = False
+
+
+@pytest.fixture
+def plant_id():
+    return uuid4()
+
+@pytest.fixture
+def facility_id():
+    return uuid4()
+
+@pytest.fixture
+def equipment_id():
+    return uuid4()
+
+@pytest.fixture
+def defect_id():
+    return uuid4()
+
+
+class TestTransaction:
+    """Контекстный менеджер для изоляции данных теста через транзакцию."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.tr = None
+
+    async def __aenter__(self):
+        self.tr = self.conn.transaction()
+        await self.tr.start()
+        return self.conn
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.tr is None:
+            return False
+
+        try:
+            if exc_type:
+                await self.tr.rollback()
+            else:
+                await self.tr.rollback()  # rollback для тестов
+        finally:
+            self.tr = None
+        return False
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
@@ -52,146 +96,70 @@ async def seed_test_data():
         print(f"STDERR: {e.stderr}")
         raise
 
-    # Load test-specific data (test inspectors)
-    # This is separate from migrations as it's test-only data
-    test_data_script = Path(__file__).parent.parent / "scripts" / "init_test_data.sql"
-    if test_data_script.exists():
-        conn = await asyncpg.connect(settings.get_database_url())
-        try:
-            with open(test_data_script, "r") as f:
-                sql = f.read()
-            await conn.execute(sql)
-            print("Test data loaded successfully")
-        except Exception as e:
-            print(f"Failed to load test data: {e}")
-            raise
-        finally:
-            await conn.close()
-    else:
-        print(f"Warning: Test data script not found at {test_data_script}")
-
-    yield
-
 
 @pytest_asyncio.fixture(scope="function")
-async def seed_test_plant_and_facility(request):
-    """Seed test plant and facility for each test function that needs them."""
-    # Get plant_id if available
-    plant_id = None
-    facility_id = None
+async def created_plant():
+    """Создает запись plant в БД и удаляет после теста."""
+    plant_id = uuid4()
+    facility_id = uuid4()
+    equipment_id = uuid4()
 
-    if "plant_id" in request.fixturenames:
-        plant_id = request.getfixturevalue("plant_id")
-
-    if "facility_id" in request.fixturenames:
-        facility_id = request.getfixturevalue("facility_id")
-
-    # If we have a plant_id, seed the plant and facility
-    if plant_id:
-        conn = await asyncpg.connect(settings.get_database_url())
-        try:
-            # Insert test plant if not exists
-            await conn.execute(
-                """
-                INSERT INTO lesiv.plant (id, name, server_modified_at)
-                VALUES ($1, 'Test Plant', CURRENT_TIMESTAMP)
-                ON CONFLICT (id) DO NOTHING
+    # Setup
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        await conn.execute(
+            """
+            INSERT INTO lesiv.plant (id, name, server_modified_at)
+            VALUES ($1, 'Test Plant2', CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO NOTHING
             """,
-                plant_id,
-            )
-
-            # Grant access to test inspectors for this plant
-            await conn.execute(
-                """
-                INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
-                SELECT id, $1
-                FROM lesiv.inspector
-                WHERE id IN (1, 2, 3)
-                ON CONFLICT (inspector_id, plant_id) DO NOTHING
+            plant_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO lesiv.facility (id, plant_id, name)
+            VALUES ($1, $2, 'Test Facility2')
+            ON CONFLICT (id) DO NOTHING
             """,
-                plant_id,
-            )
-
-            # Insert test facility if not exists (only if facility_id is provided)
-            if facility_id:
-                await conn.execute(
-                    """
-                    INSERT INTO lesiv.facility (id, plant_id, name)
-                    VALUES ($1, $2, 'Test Facility')
-                    ON CONFLICT (id) DO NOTHING
-                """,
-                    facility_id,
-                    plant_id,
-                )
-        finally:
-            await conn.close()
-
-    yield
-
-
-@pytest_asyncio.fixture(scope="function")
-async def seed_test_equipment(request):
-    """Seed test equipment for each test function that needs it."""
-    # Only run if equipment_id fixture is available
-    if "equipment_id" not in request.fixturenames:
-        yield
-        return
-
-    # First ensure plant and facility exist
-    if "plant_id" in request.fixturenames and "facility_id" in request.fixturenames:
-        plant_id = request.getfixturevalue("plant_id")
-        facility_id = request.getfixturevalue("facility_id")
-        equipment_id = request.getfixturevalue("equipment_id")
-
-        conn = await asyncpg.connect(settings.get_database_url())
-        try:
-            # Insert test plant if not exists
-            await conn.execute(
-                """
-                INSERT INTO lesiv.plant (id, name, server_modified_at)
-                VALUES ($1, 'Test Plant', CURRENT_TIMESTAMP)
-                ON CONFLICT (id) DO NOTHING
+            facility_id,
+            plant_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO lesiv.equipment (id, facility_id, parent_id, name, estimated_point_count, server_modified_at)
+            VALUES ($1, $2, $3, 'Test Equipment2', 10, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO NOTHING
             """,
-                plant_id,
-            )
+            equipment_id,
+            facility_id,
+            facility_id,
+        )
+    finally:
+        await conn.close()
 
-            # Grant access to test inspectors for this plant
-            await conn.execute(
-                """
-                INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
-                SELECT id, $1
-                FROM lesiv.inspector
-                WHERE id IN (1, 2, 3)
-                ON CONFLICT (inspector_id, plant_id) DO NOTHING
-            """,
-                plant_id,
-            )
+    yield plant_id, facility_id, equipment_id
 
-            # Insert test facility if not exists
-            await conn.execute(
-                """
-                INSERT INTO lesiv.facility (id, plant_id, name)
-                VALUES ($1, $2, 'Test Facility')
-                ON CONFLICT (id) DO NOTHING
-            """,
-                facility_id,
-                plant_id,
-            )
-
-            # Insert test equipment if not exists
-            await conn.execute(
-                """
-                INSERT INTO lesiv.equipment (id, facility_id, parent_id, name, is_container, server_modified_at)
-                VALUES ($1, $2, $2, 'Test Equipment', false, CURRENT_TIMESTAMP)
-                ON CONFLICT (id) DO NOTHING
-            """,
-                equipment_id,
-                facility_id,
-            )
-        finally:
-            await conn.close()
-
-    yield
+    # Cleanup — удаляем в обратном порядке (зависимые → родительские)
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        await conn.execute(
+            "DELETE FROM lesiv.equipment WHERE id = $1",
+            equipment_id,
+        )
+        await conn.execute(
+            "DELETE FROM lesiv.facility WHERE id = $1",
+            facility_id,
+        )
+        await conn.execute(
+            "DELETE FROM lesiv.inspector_plant_access WHERE plant_id = $1",
+            plant_id,
+        )
+        await conn.execute(
+            "DELETE FROM lesiv.plant WHERE id = $1",
+            plant_id,
+        )
+    finally:
+        await conn.close()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -214,7 +182,76 @@ async def grant_plant_access():
         finally:
             await conn.close()
 
-    return _grant_access
+    yield _grant_access
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_plant_facility_session(plant_id, facility_id, equipment_id):
+    """Seed test plant and facility for each test function that needs them."""
+
+    conn = await asyncpg.connect(settings.get_database_url())
+    async with TestTransaction(conn) as db:
+        # вставка тестовых данных
+        await db.execute(
+            """
+            INSERT INTO lesiv.plant (id, name, server_modified_at)
+            VALUES ($1, 'Test Plant1', CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            plant_id,
+        )
+        await db.execute(
+            """
+            INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
+            SELECT id, $1
+            FROM lesiv.inspector
+            WHERE id IN (1, 2, 3)
+            ON CONFLICT (inspector_id, plant_id) DO NOTHING
+            """,
+            plant_id,
+        )
+        await db.execute(
+            """
+            INSERT INTO lesiv.facility (id, plant_id, name)
+            VALUES ($1, $2, 'Test Facility1')
+            ON CONFLICT (id) DO NOTHING
+            """,
+            facility_id,
+            plant_id,
+        )
+        await db.execute(
+            """
+            INSERT INTO lesiv.equipment (id, facility_id, parent_id, name, estimated_point_count, server_modified_at)
+            VALUES ($1, $2, $3, 'Test Equipment1', 10, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            equipment_id,
+            facility_id,
+            facility_id,
+        )
+        yield db
+    await conn.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def api_client(db_plant_facility_session):
+    """
+    Асинхронный клиент для тестирования API.
+    Использует dependency_overrides для подмены БД.
+    """
+    from app.database import get_db_connection
+
+    async def mock_get_db():
+        return db_plant_facility_session
+
+    app.dependency_overrides[get_db_connection] = mock_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
 
 
 @pytest.fixture(scope="function")
@@ -237,11 +274,8 @@ async def db_sticker_session():
     6. Закрывает соединение в блоке finally.
     """
     conn = await asyncpg.connect(settings.get_database_url())
-    tr = conn.transaction()
-    await tr.start()
-
-    try:
-        await conn.execute(
+    async with TestTransaction(conn) as db:
+        await db.execute(
             """INSERT INTO lesiv.sticker_installation (
                    id, control_point_id, inspector_id, kind, sticker_type_id,
                    sticker_color, from_sticker_type_id, count, installed_at
@@ -278,15 +312,8 @@ async def db_sticker_session():
                 ON CONFLICT (inspector_id, plant_id) DO NOTHING;
             """
         )
-        yield conn
-
-    except Exception:
-        await tr.rollback()
-        raise
-    else:
-        await tr.rollback()
-    finally:
-        await conn.close()
+        yield db
+    await conn.close()
 
 
 @pytest_asyncio.fixture(scope="function")

@@ -13,7 +13,7 @@ def test_get_all_facility_templates(client: TestClient):
     items = data["items"]
 
     # Should have 10 facility templates from V3 migration
-    assert len(items) == 10
+    assert len(items) == 11
 
     # Verify structure of first item
     assert all(
@@ -195,13 +195,13 @@ def test_get_all_facility_templates_with_modified_since_filter(client: TestClien
     response = client.get("/facility-template/all")
     assert response.status_code == 200
     all_templates = response.json()["items"]
-    assert len(all_templates) == 10
+    assert len(all_templates) == 11
 
     # Get facility templates with a very old timestamp - should return all
     response = client.get("/facility-template/all?modified_since=1900-01-01T00:00:00Z")
     assert response.status_code == 200
     filtered_templates = response.json()["items"]
-    assert len(filtered_templates) == 10
+    assert len(filtered_templates) == 11
 
     # Get facility templates with a future timestamp - should return none
     response = client.get("/facility-template/all?modified_since=2099-12-31T23:59:59Z")

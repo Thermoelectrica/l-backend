@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 PUT_BODY_TEMPLATE = {
     "name": "Test Motor",
@@ -27,17 +28,7 @@ PUT_BODY_TEMPLATE = {
 
 
 @pytest.fixture
-def equipment_id():
-    return uuid4()
-
-
-@pytest.fixture
-def plant_id():
-    return uuid4()
-
-
-@pytest.fixture
-def facility_id():
+def equipment2_id():
     return uuid4()
 
 
@@ -53,15 +44,12 @@ def defect_id_1():
 
 @pytest.fixture
 def equipment_data(
-    equipment_id,
-    plant_id,
+    equipment2_id,
     facility_id,
     control_point_id_1,
-    defect_id_1,
-    seed_test_plant_and_facility,
 ):
     data = deepcopy(PUT_BODY_TEMPLATE)
-    data["id"] = str(equipment_id)
+    data["id"] = str(equipment2_id)
     data["facility_id"] = str(facility_id)
     data["parent_id"] = str(facility_id)
     data["control_points"][0]["id"] = str(control_point_id_1)
@@ -69,14 +57,20 @@ def equipment_data(
     return data
 
 
-def test_create_equipment(client: TestClient, equipment_data, equipment_id, plant_id, facility_id):
+@pytest.mark.asyncio
+async def test_create_equipment(
+    api_client: AsyncClient,
+    equipment_data,
+    equipment2_id,
+    facility_id
+):
     """Test creating a new equipment with control points (defects always empty)"""
 
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     data = response.json()
-    assert data["id"] == str(equipment_id)
+    assert data["id"] == str(equipment2_id)
     assert data["name"] == "Test Motor"
     assert data["facility_id"] == str(facility_id)
     assert data["parent_id"] == str(facility_id)
@@ -84,32 +78,41 @@ def test_create_equipment(client: TestClient, equipment_data, equipment_id, plan
     assert len(data["defects"]) == 0  # Always empty now
 
 
-def test_get_equipment(client: TestClient, equipment_data, equipment_id):
+@pytest.mark.asyncio
+async def test_get_equipment(
+        api_client: AsyncClient,
+        equipment_data,
+        equipment2_id
+    ):
     """Test retrieving equipment"""
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     # Then get
-    response = client.get(f"/equipment/by_id/{equipment_id}")
+    response = await api_client.get(f"/equipment/by_id/{equipment2_id}")
     assert response.status_code == 200
 
     data = response.json()
-    assert data["id"] == str(equipment_id)
+    assert data["id"] == str(equipment2_id)
     assert data["name"] == "Test Motor"
     assert len(data["control_points"]) == 1
 
 
 def test_get_nonexistent_equipment(client: TestClient):
     """Test retrieving a non-existent equipment"""
-    equipment_id = uuid4()
-    response = client.get(f"/equipment/by_id/{equipment_id}")
+    equipment2_id = uuid4()
+    response = client.get(f"/equipment/by_id/{equipment2_id}")
     assert response.status_code == 404
 
 
-def test_update_equipment(client: TestClient, equipment_data):
+@pytest.mark.asyncio
+async def test_update_equipment(
+        api_client: AsyncClient,
+        equipment_data
+    ):
     """Test updating equipment"""
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
 
     equipment_data["server_modified_at"] = server_modified_at
@@ -117,7 +120,7 @@ def test_update_equipment(client: TestClient, equipment_data):
     equipment_data["control_points"][0]["point_count"] = 15
     equipment_data["control_points"][0]["is_deleted"] = True
 
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -127,10 +130,14 @@ def test_update_equipment(client: TestClient, equipment_data):
     assert len(data["defects"]) == 0  # Always empty
 
 
-def test_sync_control_points_add_new(client: TestClient, equipment_data):
+@pytest.mark.asyncio
+async def test_sync_control_points_add_new(
+    api_client: AsyncClient,
+    equipment_data
+):
     """Test adding new control points"""
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
     equipment_data["server_modified_at"] = server_modified_at
 
@@ -147,14 +154,18 @@ def test_sync_control_points_add_new(client: TestClient, equipment_data):
             "is_deleted": False,
         }
     )
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     data = response.json()
     assert len(data["control_points"]) == 2
 
 
-def test_sync_control_points_reject_missing_child(client: TestClient, equipment_data):
+@pytest.mark.asyncio
+async def test_sync_control_points_reject_missing_child(
+        api_client: AsyncClient,
+        equipment_data
+    ):
     """Test marking control points as deleted explicitly"""
     control_point_id_2 = uuid4()
     equipment_data["control_points"].append(
@@ -167,17 +178,21 @@ def test_sync_control_points_reject_missing_child(client: TestClient, equipment_
             "is_deleted": False,
         }
     )
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
     equipment_data["server_modified_at"] = server_modified_at
 
     del equipment_data["control_points"][0]
 
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 409
 
 
-def test_sync_control_points_force_update(client: TestClient, equipment_data):
+@pytest.mark.asyncio
+async def test_sync_control_points_force_update(
+        api_client: AsyncClient,
+        equipment_data
+    ):
     """Test marking control points as deleted explicitly"""
     control_point_id_2 = uuid4()
     equipment_data["control_points"].append(
@@ -190,13 +205,13 @@ def test_sync_control_points_force_update(client: TestClient, equipment_data):
             "is_deleted": False,
         }
     )
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
     equipment_data["server_modified_at"] = server_modified_at
 
     del equipment_data["control_points"][0]
 
-    response = client.put("/equipment?force=true", json=equipment_data)
+    response = await api_client.put("/equipment?force=true", json=equipment_data)
     assert response.status_code == 200
     data = response.json()
     assert len(data["control_points"]) == 2
@@ -209,18 +224,23 @@ def test_sync_control_points_force_update(client: TestClient, equipment_data):
 # See tests/test_defect.py for defect-specific tests
 
 
-def test_delete_equipment(client: TestClient, equipment_data, equipment_id):
+@pytest.mark.asyncio
+async def test_delete_equipment(
+        api_client: AsyncClient,
+        equipment2_id,
+        equipment_data
+):
     """Test logical deletion of equipment"""
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
     equipment_data["server_modified_at"] = server_modified_at
     equipment_data["is_deleted"] = True
 
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     # Verify it's marked as deleted
-    get_response = client.get(f"/equipment/by_id/{equipment_id}")
+    get_response = await api_client.get(f"/equipment/by_id/{equipment2_id}")
     assert get_response.status_code == 200
     data = get_response.json()
     assert data["is_deleted"] is True
@@ -228,23 +248,20 @@ def test_delete_equipment(client: TestClient, equipment_data, equipment_id):
 
 # DEPRECATED: Defect transfer test removed - defects are now managed via separate defect router
 
-
-def test_control_point_transfer_not_allowed(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_control_point_transfer_not_allowed(
+    api_client: AsyncClient,
     equipment_data,
-    equipment_id,
-    plant_id,
     facility_id,
-    control_point_id_1,
 ):
     """Test that transferring a control point from one equipment to another is not allowed"""
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
 
-    equipment_id2 = uuid4()
+    equipment2_id2 = uuid4()
 
     equipment_data2 = {
-        "id": str(equipment_id2),
+        "id": str(equipment2_id2),
         "facility_id": str(facility_id),
         "parent_id": str(facility_id),
         "name": "Test Motor 2",
@@ -258,15 +275,18 @@ def test_control_point_transfer_not_allowed(
         "defects": [],
     }
 
-    response = client.put("/equipment", json=equipment_data2)
+    response = await api_client.put("/equipment", json=equipment_data2)
     assert response.status_code == 400
     assert "cannot transfer" in response.json()["detail"].lower()
 
 
 # NEW TESTS - Missing test cases 2-10
 
-
-def test_mismatched_control_point_ids_rejection(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_mismatched_control_point_ids_rejection(
+    api_client: AsyncClient,
+    equipment_data,
+):
     """Test #2: Reject when server and client have same count but different control point IDs"""
     control_point_id_2 = uuid4()
     control_point_id_3 = uuid4()
@@ -293,7 +313,7 @@ def test_mismatched_control_point_ids_rejection(client: TestClient, equipment_da
         }
     )
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -309,7 +329,7 @@ def test_mismatched_control_point_ids_rejection(client: TestClient, equipment_da
         "is_deleted": False,
     }
 
-    response = client.put("/equipment?force=false", json=equipment_data)
+    response = await api_client.put("/equipment?force=false", json=equipment_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -320,8 +340,11 @@ def test_mismatched_control_point_ids_rejection(client: TestClient, equipment_da
 
 # DEPRECATED: Defect mismatch test removed - defects are now managed via separate defect router
 
-
-def test_deleted_control_points_persist_through_updates(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_deleted_control_points_persist_through_updates(
+    api_client: AsyncClient,
+    equipment_data,
+):
     """Test #4a: Deleted control points remain in GET response after updates"""
     control_point_id_2 = uuid4()
 
@@ -337,14 +360,14 @@ def test_deleted_control_points_persist_through_updates(client: TestClient, equi
         }
     )
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     server_modified_at = create_response.json()["server_modified_at"]
 
     # Mark control point 2 as deleted
     equipment_data["server_modified_at"] = server_modified_at
     equipment_data["control_points"][1]["is_deleted"] = True
 
-    update_response = client.put("/equipment", json=equipment_data)
+    update_response = await api_client.put("/equipment", json=equipment_data)
     assert update_response.status_code == 200
     server_modified_at = update_response.json()["server_modified_at"]
 
@@ -352,11 +375,11 @@ def test_deleted_control_points_persist_through_updates(client: TestClient, equi
     equipment_data["server_modified_at"] = server_modified_at
     equipment_data["name"] = "Updated Equipment Name"
 
-    final_response = client.put("/equipment", json=equipment_data)
+    final_response = await api_client.put("/equipment", json=equipment_data)
     assert final_response.status_code == 200
 
     # Verify deleted control point is still returned
-    get_response = client.get(f"/equipment/by_id/{equipment_data['id']}")
+    get_response = await api_client.get(f"/equipment/by_id/{equipment_data['id']}")
     assert get_response.status_code == 200
 
     data = get_response.json()
@@ -372,33 +395,34 @@ def test_deleted_control_points_persist_through_updates(client: TestClient, equi
 
 # DEPRECATED: Deleted defects test removed - defects are now managed via separate defect router
 
-
-def test_force_mode_with_control_point_stealing_attempt(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_force_mode_with_control_point_stealing_attempt(
+    api_client: AsyncClient,
     equipment_data,
-    equipment_id,
-    plant_id,
     facility_id,
     control_point_id_1,
 ):
     """Test #5: Stealing control points never allowed even with force=true"""
-    client.put("/equipment", json=equipment_data)
+    await api_client.put("/equipment", json=equipment_data)
 
     # Try to steal control point with force=true
-    equipment_id_2 = uuid4()
+    equipment2_id_2 = uuid4()
     equipment_data_2 = deepcopy(PUT_BODY_TEMPLATE)
-    equipment_data_2["id"] = str(equipment_id_2)
+    equipment_data_2["id"] = str(equipment2_id_2)
     equipment_data_2["facility_id"] = str(facility_id)
     equipment_data_2["parent_id"] = str(facility_id)
     equipment_data_2["name"] = "Equipment Two"
     equipment_data_2["control_points"][0]["id"] = str(control_point_id_1)  # Steal control point
 
-    response = client.put("/equipment?force=true", json=equipment_data_2)
+    response = await api_client.put("/equipment?force=true", json=equipment_data_2)
     assert response.status_code == 400
     assert "cannot transfer" in response.json()["detail"].lower()
 
 
-def test_empty_control_points_list_without_force(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_empty_control_points_list_without_force(
+    api_client: AsyncClient, equipment_data, control_point_id_1
+):
     """Test #6a: Updating from non-empty to empty control points with force=false should reject"""
     control_point_id_2 = uuid4()
 
@@ -414,7 +438,7 @@ def test_empty_control_points_list_without_force(client: TestClient, equipment_d
         }
     )
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -422,7 +446,7 @@ def test_empty_control_points_list_without_force(client: TestClient, equipment_d
     equipment_data["server_modified_at"] = server_modified_at
     equipment_data["control_points"] = []
 
-    response = client.put("/equipment?force=false", json=equipment_data)
+    response = await api_client.put("/equipment?force=false", json=equipment_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -430,7 +454,10 @@ def test_empty_control_points_list_without_force(client: TestClient, equipment_d
     assert "extra child" in error_data["message"].lower()
 
 
-def test_empty_control_points_list_with_force(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_empty_control_points_list_with_force(
+    api_client: AsyncClient, equipment_data, control_point_id_1
+):
     """Test #6b: Updating from non-empty to empty control points with force=true should mark all as deleted"""
     control_point_id_2 = uuid4()
 
@@ -446,12 +473,12 @@ def test_empty_control_points_list_with_force(client: TestClient, equipment_data
         }
     )
 
-    client.put("/equipment", json=equipment_data)
+    await api_client.put("/equipment", json=equipment_data)
 
     # Update with empty control points list (force=true)
     equipment_data["control_points"] = []
 
-    response = client.put("/equipment?force=true", json=equipment_data)
+    response = await api_client.put("/equipment?force=true", json=equipment_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -465,7 +492,12 @@ def test_empty_control_points_list_with_force(client: TestClient, equipment_data
 # DEPRECATED: Empty defects list tests removed - defects are now managed via separate defect router
 
 
-def test_multiple_operations_in_single_request(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_multiple_operations_in_single_request(
+    api_client: AsyncClient,
+    equipment_data,
+    control_point_id_1
+):
     """Test #7: Simultaneously add, update, and delete control points in one PUT"""
     control_point_id_2 = uuid4()
 
@@ -481,7 +513,7 @@ def test_multiple_operations_in_single_request(client: TestClient, equipment_dat
         }
     )
 
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -505,7 +537,7 @@ def test_multiple_operations_in_single_request(client: TestClient, equipment_dat
         }
     )
 
-    response = client.put("/equipment", json=equipment_data)
+    response = await api_client.put("/equipment", json=equipment_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -539,10 +571,14 @@ def test_multiple_operations_in_single_request(client: TestClient, equipment_dat
     assert cp3["is_deleted"] is False
 
 
-def test_get_all_equipment_includes_deleted(client: TestClient, equipment_data):
+@pytest.mark.asyncio
+async def test_get_all_equipment_includes_deleted(
+    api_client: AsyncClient,
+    equipment_data
+):
     """Test #8: GET /equipment/all includes deleted equipment"""
     # Create equipment
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -550,11 +586,11 @@ def test_get_all_equipment_includes_deleted(client: TestClient, equipment_data):
     equipment_data["server_modified_at"] = server_modified_at
     equipment_data["is_deleted"] = True
 
-    update_response = client.put("/equipment", json=equipment_data)
+    update_response = await api_client.put("/equipment", json=equipment_data)
     assert update_response.status_code == 200
 
     # Get all equipment
-    response = client.get("/equipment/all")
+    response = await api_client.get("/equipment/all")
     assert response.status_code == 200
 
     data = response.json()
@@ -566,27 +602,33 @@ def test_get_all_equipment_includes_deleted(client: TestClient, equipment_data):
     assert deleted_equipment["is_deleted"] is True
 
 
-def test_get_equipment_by_plant_id(client: TestClient, equipment_data, plant_id, facility_id):
+@pytest.mark.asyncio
+async def test_get_equipment_by_plant_id(
+    api_client: AsyncClient,
+    equipment_data,
+    plant_id,
+    facility_id
+):
     """Test #9: GET /equipment/by_plant_id/{plant_id} returns full equipment aggregates for specific plant"""
     # Create equipment for plant
-    client.put("/equipment", json=equipment_data)
+    await api_client.put("/equipment", json=equipment_data)
 
     # Create another equipment for different plant
-    equipment_id_2 = uuid4()
+    equipment2_id_2 = uuid4()
     facility_id_2 = uuid4()
 
     equipment_data_2 = deepcopy(PUT_BODY_TEMPLATE)
-    equipment_data_2["id"] = str(equipment_id_2)
+    equipment_data_2["id"] = str(equipment2_id_2)
     equipment_data_2["facility_id"] = str(facility_id_2)
     equipment_data_2["parent_id"] = str(facility_id_2)
     equipment_data_2["name"] = "Equipment for Plant 2"
     equipment_data_2["control_points"][0]["id"] = str(uuid4())
     # defects is already empty in template
 
-    client.put("/equipment", json=equipment_data_2)
+    await api_client.put("/equipment", json=equipment_data_2)
 
     # Get equipment for first plant
-    response = client.get(f"/equipment/by_plant_id/{plant_id}")
+    response = await api_client.get(f"/equipment/by_plant_id/{plant_id}")
     assert response.status_code == 200
 
     data = response.json()
@@ -608,12 +650,16 @@ def test_get_equipment_by_plant_id(client: TestClient, equipment_data, plant_id,
     assert len(our_equipment["defects"]) == 0  # Always empty
 
 
-def test_concurrent_modification_with_control_points(client: TestClient, equipment_data, control_point_id_1):
+@pytest.mark.asyncio
+async def test_concurrent_modification_with_control_points(
+    api_client: AsyncClient,
+    equipment_data,
+):
     """Test #10: Concurrent modification detected when another client adds control points"""
     control_point_id_2 = uuid4()
 
     # Client A creates equipment with 1 control point
-    create_response = client.put("/equipment", json=equipment_data)
+    create_response = await api_client.put("/equipment", json=equipment_data)
     assert create_response.status_code == 200
     client_a_timestamp = create_response.json()["server_modified_at"]
 
@@ -631,7 +677,7 @@ def test_concurrent_modification_with_control_points(client: TestClient, equipme
         }
     )
 
-    client_b_response = client.put("/equipment", json=equipment_data_b)
+    client_b_response = await api_client.put("/equipment", json=equipment_data_b)
     assert client_b_response.status_code == 200
     client_b_timestamp = client_b_response.json()["server_modified_at"]
 
@@ -640,7 +686,7 @@ def test_concurrent_modification_with_control_points(client: TestClient, equipme
     equipment_data["server_modified_at"] = client_a_timestamp
     equipment_data["name"] = "Updated by Client A"
 
-    response = client.put("/equipment?force=false", json=equipment_data)
+    response = await api_client.put("/equipment?force=false", json=equipment_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -654,101 +700,112 @@ def test_concurrent_modification_with_control_points(client: TestClient, equipme
 # Tests for modified_since filter
 
 
-def test_get_all_equipment_with_modified_since_filter(client: TestClient, equipment_data, plant_id, facility_id):
+@pytest.mark.asyncio
+async def test_get_all_equipment_with_modified_since_filter(
+    api_client: AsyncClient,
+    equipment_data,
+    facility_id
+):
     """Test filtering equipment by modified_since parameter"""
     import time
 
     # Create first equipment
-    equipment_id_1 = uuid4()
-    equipment_data["id"] = str(equipment_id_1)
+    equipment2_id_1 = uuid4()
+    equipment_data["id"] = str(equipment2_id_1)
     equipment_data["name"] = "Equipment One"
-    response1 = client.put("/equipment", json=equipment_data)
+    response1 = await api_client.put("/equipment", json=equipment_data)
     assert response1.status_code == 200
     timestamp1 = response1.json()["server_modified_at"]
 
     # Wait a moment and create second equipment
     time.sleep(0.1)
 
-    equipment_id_2 = uuid4()
+    equipment2_id_2 = uuid4()
     equipment_data_2 = deepcopy(PUT_BODY_TEMPLATE)
-    equipment_data_2["id"] = str(equipment_id_2)
+    equipment_data_2["id"] = str(equipment2_id_2)
     equipment_data_2["facility_id"] = str(facility_id)
     equipment_data_2["parent_id"] = str(facility_id)
     equipment_data_2["name"] = "Equipment Two"
     equipment_data_2["control_points"][0]["id"] = str(uuid4())
-    response2 = client.put("/equipment", json=equipment_data_2)
+    response2 = await api_client.put("/equipment", json=equipment_data_2)
     assert response2.status_code == 200
     timestamp2 = response2.json()["server_modified_at"]
 
     # Get all equipment without filter - should return both
-    response = client.get("/equipment/all")
+    response = await api_client.get("/equipment/all")
     assert response.status_code == 200
     all_equipment = response.json()["items"]
-    equipment_ids = [e["id"] for e in all_equipment]
-    assert str(equipment_id_1) in equipment_ids
-    assert str(equipment_id_2) in equipment_ids
+    equipment2_ids = [e["id"] for e in all_equipment]
+    assert str(equipment2_id_1) in equipment2_ids
+    assert str(equipment2_id_2) in equipment2_ids
 
     # Get equipment modified after timestamp1 - should only return equipment 2
-    response = client.get(f"/equipment/all?modified_since={timestamp1}")
+    response = await api_client.get(f"/equipment/all?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_equipment = response.json()["items"]
     filtered_ids = [e["id"] for e in filtered_equipment]
-    assert str(equipment_id_1) not in filtered_ids
-    assert str(equipment_id_2) in filtered_ids
+    assert str(equipment2_id_1) not in filtered_ids
+    assert str(equipment2_id_2) in filtered_ids
 
     # Get equipment modified after timestamp2 - should return none
-    response = client.get(f"/equipment/all?modified_since={timestamp2}")
+    response = await api_client.get(f"/equipment/all?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_equipment = response.json()["items"]
     filtered_ids = [e["id"] for e in filtered_equipment]
-    assert str(equipment_id_1) not in filtered_ids
-    assert str(equipment_id_2) not in filtered_ids
+    assert str(equipment2_id_1) not in filtered_ids
+    assert str(equipment2_id_2) not in filtered_ids
 
 
-def test_get_equipment_by_plant_with_modified_since_filter(client: TestClient, equipment_data, plant_id, facility_id):
+@pytest.mark.asyncio
+async def test_get_equipment_by_plant_with_modified_since_filter(
+    api_client: AsyncClient,
+    equipment_data,
+    plant_id,
+    facility_id
+):
     """Test filtering equipment by plant and modified_since parameter"""
     import time
 
     # Create first equipment
-    equipment_id_1 = uuid4()
-    equipment_data["id"] = str(equipment_id_1)
+    equipment2_id_1 = uuid4()
+    equipment_data["id"] = str(equipment2_id_1)
     equipment_data["name"] = "Equipment One"
-    response1 = client.put("/equipment", json=equipment_data)
+    response1 = await api_client.put("/equipment", json=equipment_data)
     assert response1.status_code == 200
     timestamp1 = response1.json()["server_modified_at"]
 
     # Wait a moment and create second equipment
     time.sleep(0.1)
 
-    equipment_id_2 = uuid4()
+    equipment2_id_2 = uuid4()
     equipment_data_2 = deepcopy(PUT_BODY_TEMPLATE)
-    equipment_data_2["id"] = str(equipment_id_2)
+    equipment_data_2["id"] = str(equipment2_id_2)
     equipment_data_2["facility_id"] = str(facility_id)
     equipment_data_2["parent_id"] = str(facility_id)
     equipment_data_2["name"] = "Equipment Two"
     equipment_data_2["control_points"][0]["id"] = str(uuid4())
-    response2 = client.put("/equipment", json=equipment_data_2)
+    response2 = await api_client.put("/equipment", json=equipment_data_2)
     assert response2.status_code == 200
     timestamp2 = response2.json()["server_modified_at"]
 
     # Get all equipment for plant without filter - should return both
-    response = client.get(f"/equipment/by_plant_id/{plant_id}")
+    response = await api_client.get(f"/equipment/by_plant_id/{plant_id}")
     assert response.status_code == 200
     all_equipment = response.json()
-    equipment_ids = [e["id"] for e in all_equipment]
-    assert str(equipment_id_1) in equipment_ids
-    assert str(equipment_id_2) in equipment_ids
+    equipment2_ids = [e["id"] for e in all_equipment]
+    assert str(equipment2_id_1) in equipment2_ids
+    assert str(equipment2_id_2) in equipment2_ids
 
     # Get equipment modified after timestamp1 - should only return equipment 2
-    response = client.get(f"/equipment/by_plant_id/{plant_id}?modified_since={timestamp1}")
+    response = await api_client.get(f"/equipment/by_plant_id/{plant_id}?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_equipment = response.json()
     filtered_ids = [e["id"] for e in filtered_equipment]
-    assert str(equipment_id_1) not in filtered_ids
-    assert str(equipment_id_2) in filtered_ids
+    assert str(equipment2_id_1) not in filtered_ids
+    assert str(equipment2_id_2) in filtered_ids
 
     # Get equipment modified after timestamp2 - should return none
-    response = client.get(f"/equipment/by_plant_id/{plant_id}?modified_since={timestamp2}")
+    response = await api_client.get(f"/equipment/by_plant_id/{plant_id}?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_equipment = response.json()
     assert len(filtered_equipment) == 0

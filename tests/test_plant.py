@@ -4,7 +4,7 @@ from copy import deepcopy
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 PUT_BODY_TEMPLATE = {
     "name": "Test Power Plant",
@@ -18,7 +18,7 @@ PUT_BODY_TEMPLATE = {
 
 
 @pytest.fixture
-def plant_id():
+def plant1_id():
     return uuid4()
 
 
@@ -38,48 +38,53 @@ def facility_id_3():
 
 
 @pytest.fixture
-def plant_data(plant_id, facility_id_1):
+def plant_data(plant1_id, facility_id_1):
     data = deepcopy(PUT_BODY_TEMPLATE)
-    data["id"] = str(plant_id)
+    data["id"] = str(plant1_id)
     data["facilities"][0]["id"] = str(facility_id_1)
     return data
 
 
-def test_create_plant(client: TestClient, plant_data, plant_id, facility_id_1):
+@pytest.mark.asyncio
+async def test_create_plant(api_client: AsyncClient, plant_data, plant1_id, facility_id_1, db_plant_facility_session):
     """Test creating a new plant with facilities (server_modified_at ignored for new plants)"""
-    response = client.put("/plant", json=plant_data)
+
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
-    assert data["id"] == str(plant_id)
+    assert data["id"] == str(plant1_id)
     assert data["name"] == "Test Power Plant"
     assert len(data["facilities"]) == 1
     assert data["facilities"][0]["id"] == str(facility_id_1)
     assert "server_modified_at" in data
 
 
-def test_get_plant(client: TestClient, plant_data, plant_id):
+@pytest.mark.asyncio
+async def test_get_plant(api_client: AsyncClient, plant_data, plant1_id):
     """Test retrieving a plant using new by_id endpoint"""
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Then get
-    response = client.get(f"/plant/by_id/{plant_id}")
+    response = await api_client.get(f"/plant/by_id/{plant1_id}")
     assert response.status_code == 200
 
     data = response.json()
-    assert data["id"] == str(plant_id)
+    assert data["id"] == str(plant1_id)
     assert data["name"] == "Test Power Plant"
     assert len(data["facilities"]) == 1
 
 
-def test_get_nonexistent_plant(client: TestClient):
+@pytest.mark.asyncio
+async def test_get_nonexistent_plant(api_client: AsyncClient):
     """Test retrieving a non-existent plant"""
     plant_id = uuid4()
-    response = client.get(f"/plant/by_id/{plant_id}")
+    response = await api_client.get(f"/plant/by_id/{plant_id}")
     assert response.status_code == 404
 
 
-def test_get_all_plants(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_get_all_plants(api_client: AsyncClient, plant_data):
     """Test retrieving all plants using new /all endpoint"""
     plant_id_2 = uuid4()
     facility_id_2 = uuid4()
@@ -89,11 +94,11 @@ def test_get_all_plants(client: TestClient, plant_data):
     plant_data_2["name"] = "Plant Two"
     plant_data_2["facilities"][0]["id"] = str(facility_id_2)
 
-    client.put("/plant", json=plant_data)
-    client.put("/plant", json=plant_data_2)
+    await api_client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data_2)
 
     # Get all plants
-    response = client.get("/plant/all")
+    response = await api_client.get("/plant/all")
     assert response.status_code == 200
 
     data = response.json()
@@ -106,9 +111,10 @@ def test_get_all_plants(client: TestClient, plant_data):
     assert str(plant_id_2) in plant_ids
 
 
-def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1):
+@pytest.mark.asyncio
+async def test_update_plant_with_correct_timestamp(api_client: AsyncClient, plant_data, facility_id_1):
     """Test updating a plant with correct server_modified_at"""
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -117,7 +123,7 @@ def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, fac
     plant_data["name"] = "Updated Name"
     plant_data["facilities"][0]["name"] = "Updated Facility"
 
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -126,16 +132,17 @@ def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, fac
     assert data["server_modified_at"] != server_modified_at  # Should be updated
 
 
-def test_concurrent_modification_detected(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_concurrent_modification_detected(api_client: AsyncClient, plant_data):
     """Test that concurrent modification is detected with 409 error"""
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
 
     # Try to update with wrong timestamp
     plant_data["server_modified_at"] = "2020-01-01T00:00:00Z"
     plant_data["name"] = "Updated Name"
 
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -144,12 +151,13 @@ def test_concurrent_modification_detected(client: TestClient, plant_data):
     assert "server_modified_at" in error_data
 
 
-def test_extra_facilities_rejected_without_force(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_extra_facilities_rejected_without_force(api_client: AsyncClient, plant_data, facility_id_2):
     """Test that extra facilities on server are rejected when force=false"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -157,7 +165,7 @@ def test_extra_facilities_rejected_without_force(client: TestClient, plant_data,
     plant_data["server_modified_at"] = server_modified_at
     del plant_data["facilities"][1]
 
-    response = client.put("/plant?force=false", json=plant_data)
+    response = await api_client.put("/plant?force=false", json=plant_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -167,17 +175,18 @@ def test_extra_facilities_rejected_without_force(client: TestClient, plant_data,
     assert str(facility_id_2) in error_data["extra_child_ids"]
 
 
-def test_extra_facilities_deleted_with_force(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_extra_facilities_deleted_with_force(api_client: AsyncClient, plant_data, facility_id_2):
     """Test that extra facilities are marked as deleted when force=true"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Update with only one facility (force=true)
     del plant_data["facilities"][1]
 
-    response = client.put("/plant?force=true", json=plant_data)
+    response = await api_client.put("/plant?force=true", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -197,28 +206,30 @@ def test_extra_facilities_deleted_with_force(client: TestClient, plant_data, fac
     assert facility_2["is_deleted"] is True
 
 
-def test_missing_timestamp_for_update(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_missing_timestamp_for_update(api_client: AsyncClient, plant_data):
     """Test that outdated server_modified_at is rejected for existing plants"""
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
 
     # Try to update with old/wrong timestamp (simulating outdated timestamp)
     plant_data["server_modified_at"] = "2020-01-01T00:00:00Z"
     plant_data["name"] = "Updated Name"
 
-    response = client.put("/plant?force=false", json=plant_data)
+    response = await api_client.put("/plant?force=false", json=plant_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
     assert "modified by another client" in error_data["message"].lower()
 
 
-def test_claim_plant(client: TestClient, plant_data, plant_id):
+@pytest.mark.asyncio
+async def test_claim_plant(api_client: AsyncClient, plant_data, plant_id):
     """Test claiming a plant using new by_id path (user_id and device_id from token)"""
     from app.services.auth import AuthService
 
     plant_data["facilities"] = []
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Create a token with user_id and device_id
     auth_service = AuthService()
@@ -227,7 +238,7 @@ def test_claim_plant(client: TestClient, plant_data, plant_id):
     access_token = auth_service.create_access_token(user_id, device_id, "MODIFY")
 
     # Claim plant (no body needed, user_id and device_id extracted from token)
-    response = client.post(
+    response = await api_client.post(
         f"/plant/by_id/{plant_id}/claim",
         headers={"Authorization": f"Bearer {access_token}"},
     )
@@ -241,7 +252,8 @@ def test_claim_plant(client: TestClient, plant_data, plant_id):
     assert data["claimed_at"] is not None
 
 
-def test_release_plant(client: TestClient, plant_data, plant_id):
+@pytest.mark.asyncio
+async def test_release_plant(api_client: AsyncClient, plant_data, plant_id):
     """Test releasing a plant using new by_id path"""
     device_id = uuid4()
     plant_data["facilities"] = []
@@ -249,10 +261,10 @@ def test_release_plant(client: TestClient, plant_data, plant_id):
     plant_data["claimed_by_user_id"] = 1
     plant_data["claimed_at"] = "2024-01-01T00:00:00Z"
 
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Release plant
-    response = client.post(f"/plant/by_id/{plant_id}/release")
+    response = await api_client.post(f"/plant/by_id/{plant_id}/release")
     assert response.status_code == 200
 
     # Response should contain the updated plant
@@ -263,9 +275,10 @@ def test_release_plant(client: TestClient, plant_data, plant_id):
     assert data["claimed_at"] is None
 
 
-def test_facility_transfer_not_allowed(client: TestClient, plant_data, facility_id_1):
+@pytest.mark.asyncio
+async def test_facility_transfer_not_allowed(api_client: AsyncClient, plant_data, facility_id_1):
     """Test that transferring a facility from one plant to another is not allowed (never allow stealing)"""
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Try to create second plant and "steal" the facility
     plant_id_2 = uuid4()
@@ -275,45 +288,48 @@ def test_facility_transfer_not_allowed(client: TestClient, plant_data, facility_
     plant_data_2["facilities"][0]["id"] = str(facility_id_1)  # Same facility ID from plant 1
 
     # This should fail with 400 error (stealing never allowed, even with force=true)
-    response = client.put("/plant", json=plant_data_2)
+    response = await api_client.put("/plant", json=plant_data_2)
     assert response.status_code == 400
     assert "cannot transfer" in response.json()["detail"].lower()
 
 
-def test_force_mode_ignores_timestamp(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_force_mode_ignores_timestamp(api_client: AsyncClient, plant_data):
     """Test that force=true ignores server_modified_at validation"""
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Update with wrong timestamp but force=true
     plant_data["server_modified_at"] = "2020-01-01T00:00:00Z"
     plant_data["name"] = "Updated Name"
 
-    response = client.put("/plant?force=true", json=plant_data)
+    response = await api_client.put("/plant?force=true", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
     assert data["name"] == "Updated Name"
 
 
-def test_is_deleted_honored_for_plant(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_is_deleted_honored_for_plant(api_client: AsyncClient, plant_data):
     """Test that is_deleted value is honored for plants"""
     plant_data["name"] = "Deleted Plant"
     plant_data["is_deleted"] = True
     plant_data["facilities"] = []
 
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
     assert data["is_deleted"] is True
 
     # Verify by retrieving
-    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    get_response = await api_client.get(f"/plant/by_id/{plant_data['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["is_deleted"] is True
 
 
-def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_is_deleted_honored_for_facility(api_client: AsyncClient, plant_data, facility_id_2):
     """Test that is_deleted value is honored for facilities"""
     # Add second facility marked as deleted
     plant_data["facilities"].append(
@@ -324,7 +340,7 @@ def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facilit
         }
     )
 
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -344,7 +360,7 @@ def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facilit
     assert facility_2["is_deleted"] is True
 
     # Verify by retrieving
-    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    get_response = await api_client.get(f"/plant/by_id/{plant_data['id']}")
     assert get_response.status_code == 200
 
     retrieved_data = get_response.json()
@@ -360,10 +376,11 @@ def test_is_deleted_honored_for_facility(client: TestClient, plant_data, facilit
     assert facility_2_retrieved["is_deleted"] is True
 
 
-def test_child_aggregate_ids_in_get_response(client: TestClient, plant_data, plant_id, facility_id_1):
+@pytest.mark.asyncio
+async def test_child_aggregate_ids_in_get_response(api_client: AsyncClient, plant_data, plant1_id, facility_id_1):
     """Test #1: GET response includes child aggregate IDs (equipment_ids)"""
     # Create plant with facility
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Create equipment for the facility
     equipment_id_1 = uuid4()
@@ -399,11 +416,11 @@ def test_child_aggregate_ids_in_get_response(client: TestClient, plant_data, pla
         "defects": [],
     }
 
-    client.put("/equipment", json=equipment_data_1)
-    client.put("/equipment", json=equipment_data_2)
+    await api_client.put("/equipment", json=equipment_data_1)
+    await api_client.put("/equipment", json=equipment_data_2)
 
     # Get plant and verify equipment IDs are included
-    response = client.get(f"/plant/by_id/{plant_id}")
+    response = await api_client.get(f"/plant/by_id/{plant1_id}")
     assert response.status_code == 200
 
     data = response.json()
@@ -415,10 +432,10 @@ def test_child_aggregate_ids_in_get_response(client: TestClient, plant_data, pla
     assert str(equipment_id_2) in facility["equipment_ids"]
 
 
-def test_mismatched_child_ids_rejection(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_mismatched_child_ids_rejection(
+    api_client: AsyncClient,
     plant_data,
-    facility_id_1,
     facility_id_2,
     facility_id_3,
 ):
@@ -427,7 +444,7 @@ def test_mismatched_child_ids_rejection(
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility B", "is_deleted": False})
     plant_data["facilities"].append({"id": str(facility_id_3), "name": "Facility C", "is_deleted": False})
 
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -440,7 +457,7 @@ def test_mismatched_child_ids_rejection(
         "is_deleted": False,
     }
 
-    response = client.put("/plant?force=false", json=plant_data)
+    response = await api_client.put("/plant?force=false", json=plant_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -449,19 +466,20 @@ def test_mismatched_child_ids_rejection(
     assert str(facility_id_3) in error_data["extra_child_ids"]
 
 
-def test_deleted_children_persist_through_updates(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_deleted_children_persist_through_updates(api_client: AsyncClient, plant_data, facility_id_2):
     """Test #3: Deleted children remain in GET response after updates"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     server_modified_at = create_response.json()["server_modified_at"]
 
     # Mark facility 2 as deleted
     plant_data["server_modified_at"] = server_modified_at
     plant_data["facilities"][1]["is_deleted"] = True
 
-    update_response = client.put("/plant", json=plant_data)
+    update_response = await api_client.put("/plant", json=plant_data)
     assert update_response.status_code == 200
     server_modified_at = update_response.json()["server_modified_at"]
 
@@ -469,11 +487,11 @@ def test_deleted_children_persist_through_updates(client: TestClient, plant_data
     plant_data["server_modified_at"] = server_modified_at
     plant_data["name"] = "Updated Plant Name"
 
-    final_response = client.put("/plant", json=plant_data)
+    final_response = await api_client.put("/plant", json=plant_data)
     assert final_response.status_code == 200
 
     # Verify deleted facility is still returned
-    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    get_response = await api_client.get(f"/plant/by_id/{plant_data['id']}")
     assert get_response.status_code == 200
 
     data = get_response.json()
@@ -484,9 +502,10 @@ def test_deleted_children_persist_through_updates(client: TestClient, plant_data
     assert deleted_facility["is_deleted"] is True
 
 
-def test_force_mode_with_stealing_attempt(client: TestClient, plant_data, facility_id_1):
+@pytest.mark.asyncio
+async def test_force_mode_with_stealing_attempt(api_client: AsyncClient, plant_data, facility_id_1):
     """Test #4: Stealing never allowed even with force=true"""
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Try to steal facility with force=true
     plant_id_2 = uuid4()
@@ -495,17 +514,18 @@ def test_force_mode_with_stealing_attempt(client: TestClient, plant_data, facili
     plant_data_2["name"] = "Plant Two"
     plant_data_2["facilities"][0]["id"] = str(facility_id_1)
 
-    response = client.put("/plant?force=true", json=plant_data_2)
+    response = await api_client.put("/plant?force=true", json=plant_data_2)
     assert response.status_code == 400
     assert "cannot transfer" in response.json()["detail"].lower()
 
 
-def test_empty_facilities_list_without_force(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_empty_facilities_list_without_force(api_client: AsyncClient, plant_data, facility_id_2):
     """Test #5a: Updating from non-empty to empty facilities with force=false should reject"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -513,7 +533,7 @@ def test_empty_facilities_list_without_force(client: TestClient, plant_data, fac
     plant_data["server_modified_at"] = server_modified_at
     plant_data["facilities"] = []
 
-    response = client.put("/plant?force=false", json=plant_data)
+    response = await api_client.put("/plant?force=false", json=plant_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -521,17 +541,18 @@ def test_empty_facilities_list_without_force(client: TestClient, plant_data, fac
     assert "extra child facilities" in error_data["message"].lower()
 
 
-def test_empty_facilities_list_with_force(client: TestClient, plant_data, facility_id_2):
+@pytest.mark.asyncio
+async def test_empty_facilities_list_with_force(api_client: AsyncClient, plant_data, facility_id_2):
     """Test #5b: Updating from non-empty to empty facilities with force=true should mark all as deleted"""
     # Add second facility
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    client.put("/plant", json=plant_data)
+    await api_client.put("/plant", json=plant_data)
 
     # Update with empty facilities list (force=true)
     plant_data["facilities"] = []
 
-    response = client.put("/plant?force=true", json=plant_data)
+    response = await api_client.put("/plant?force=true", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -542,8 +563,9 @@ def test_empty_facilities_list_with_force(client: TestClient, plant_data, facili
         assert facility["is_deleted"] is True
 
 
-def test_multiple_facility_operations_in_single_request(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_multiple_facility_operations_in_single_request(
+    api_client: AsyncClient,
     plant_data,
     facility_id_1,
     facility_id_2,
@@ -553,7 +575,7 @@ def test_multiple_facility_operations_in_single_request(
     # Start with 2 facilities
     plant_data["facilities"].append({"id": str(facility_id_2), "name": "Facility 2", "is_deleted": False})
 
-    create_response = client.put("/plant", json=plant_data)
+    create_response = await api_client.put("/plant", json=plant_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -566,7 +588,7 @@ def test_multiple_facility_operations_in_single_request(
     plant_data["facilities"][1]["is_deleted"] = True
     plant_data["facilities"].append({"id": str(facility_id_3), "name": "New Facility 3", "is_deleted": False})
 
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -593,14 +615,15 @@ def test_multiple_facility_operations_in_single_request(
 # Tests for modified_since filter
 
 
-def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_get_all_plants_with_modified_since_filter(api_client: AsyncClient, plant_data):
     """Test filtering plants by modified_since parameter"""
 
     # Create first plant
     plant_id_1 = uuid4()
     plant_data["id"] = str(plant_id_1)
     plant_data["name"] = "Plant One"
-    response1 = client.put("/plant", json=plant_data)
+    response1 = await api_client.put("/plant", json=plant_data)
     assert response1.status_code == 200
     timestamp1 = response1.json()["server_modified_at"]
 
@@ -615,12 +638,12 @@ def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_dat
     plant_data_2["id"] = str(plant_id_2)
     plant_data_2["name"] = "Plant Two"
     plant_data_2["facilities"][0]["id"] = str(facility_id_2)
-    response2 = client.put("/plant", json=plant_data_2)
+    response2 = await api_client.put("/plant", json=plant_data_2)
     assert response2.status_code == 200
     timestamp2 = response2.json()["server_modified_at"]
 
     # Get all plants without filter - should return both
-    response = client.get("/plant/all")
+    response = await api_client.get("/plant/all")
     assert response.status_code == 200
     all_plants = response.json()["items"]
     plant_ids = [p["id"] for p in all_plants]
@@ -628,7 +651,7 @@ def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_dat
     assert str(plant_id_2) in plant_ids
 
     # Get plants modified after timestamp1 - should only return plant 2
-    response = client.get(f"/plant/all?modified_since={timestamp1}")
+    response = await api_client.get(f"/plant/all?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_plants = response.json()["items"]
     filtered_ids = [p["id"] for p in filtered_plants]
@@ -636,7 +659,7 @@ def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_dat
     assert str(plant_id_2) in filtered_ids
 
     # Get plants modified after timestamp2 - should return none
-    response = client.get(f"/plant/all?modified_since={timestamp2}")
+    response = await api_client.get(f"/plant/all?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_plants = response.json()["items"]
     filtered_ids = [p["id"] for p in filtered_plants]
@@ -644,14 +667,15 @@ def test_get_all_plants_with_modified_since_filter(client: TestClient, plant_dat
     assert str(plant_id_2) not in filtered_ids
 
 
-def test_get_all_plants_modified_since_default(client: TestClient, plant_data):
+@pytest.mark.asyncio
+async def test_get_all_plants_modified_since_default(api_client: AsyncClient, plant_data):
     """Test that without modified_since parameter, all plants are returned"""
     # Create a plant
-    response = client.put("/plant", json=plant_data)
+    response = await api_client.put("/plant", json=plant_data)
     assert response.status_code == 200
 
     # Get all plants without modified_since parameter
-    response = client.get("/plant/all")
+    response = await api_client.get("/plant/all")
     assert response.status_code == 200
 
     data = response.json()

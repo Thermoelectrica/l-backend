@@ -4,7 +4,7 @@ from copy import deepcopy
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 PUT_BODY_TEMPLATE = {
     "inspector_id": 1,
@@ -47,21 +47,6 @@ def inspection_id():
 
 
 @pytest.fixture
-def plant_id():
-    return uuid4()
-
-
-@pytest.fixture
-def facility_id():
-    return uuid4()
-
-
-@pytest.fixture
-def equipment_id():
-    return uuid4()
-
-
-@pytest.fixture
 def step_id_1():
     return uuid4()
 
@@ -72,7 +57,7 @@ def image_id_1():
 
 
 @pytest.fixture
-def inspection_data(inspection_id, equipment_id, step_id_1, plant_id, facility_id, seed_test_equipment):
+def inspection_data(inspection_id, equipment_id, step_id_1):
     data = deepcopy(PUT_BODY_TEMPLATE)
     data["id"] = str(inspection_id)
     data["equipment_id"] = str(equipment_id)
@@ -80,9 +65,10 @@ def inspection_data(inspection_id, equipment_id, step_id_1, plant_id, facility_i
     return data
 
 
-def test_create_inspection(client: TestClient, inspection_data, inspection_id, equipment_id):
+@pytest.mark.asyncio
+async def test_create_inspection(api_client: AsyncClient, inspection_data, inspection_id, equipment_id):
     """Test creating a new inspection with steps"""
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -92,13 +78,14 @@ def test_create_inspection(client: TestClient, inspection_data, inspection_id, e
     assert len(data["steps"]) == 1
 
 
-def test_get_inspection(client: TestClient, inspection_data, inspection_id):
+@pytest.mark.asyncio
+async def test_get_inspection(api_client: AsyncClient, inspection_data, inspection_id):
     """Test retrieving inspection"""
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     # Then get
-    response = client.get(f"/inspection/by_id/{inspection_id}")
+    response = await api_client.get(f"/inspection/by_id/{inspection_id}")
     assert response.status_code == 200
 
     data = response.json()
@@ -107,16 +94,18 @@ def test_get_inspection(client: TestClient, inspection_data, inspection_id):
     assert len(data["steps"]) == 1
 
 
-def test_get_nonexistent_inspection(client: TestClient):
+@pytest.mark.asyncio
+async def test_get_nonexistent_inspection(api_client: AsyncClient):
     """Test retrieving a non-existent inspection"""
     inspection_id = uuid4()
-    response = client.get(f"/inspection/by_id/{inspection_id}")
+    response = await api_client.get(f"/inspection/by_id/{inspection_id}")
     assert response.status_code == 404
 
 
-def test_update_inspection(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_update_inspection(api_client: AsyncClient, inspection_data):
     """Test updating inspection"""
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
 
     inspection_data["server_modified_at"] = server_modified_at
@@ -124,7 +113,7 @@ def test_update_inspection(client: TestClient, inspection_data):
     inspection_data["completed_at"] = "2024-01-01T12:00:00Z"
     inspection_data["steps"][0]["description"] = "Updated description"
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -133,9 +122,10 @@ def test_update_inspection(client: TestClient, inspection_data):
     assert data["steps"][0]["description"] == "Updated description"
 
 
-def test_sync_steps_add_new(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_sync_steps_add_new(api_client: AsyncClient, inspection_data):
     """Test adding new inspection steps"""
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
 
@@ -169,14 +159,15 @@ def test_sync_steps_add_new(client: TestClient, inspection_data):
         }
     )
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
     assert len(data["steps"]) == 2
 
 
-def test_sync_steps_reject_missing_child(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_sync_steps_reject_missing_child(api_client: AsyncClient, inspection_data):
     """Test rejecting when steps are missing without force"""
     step_id_2 = uuid4()
     inspection_data["steps"].append(
@@ -207,18 +198,19 @@ def test_sync_steps_reject_missing_child(client: TestClient, inspection_data):
         }
     )
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
 
     # Remove first step
     del inspection_data["steps"][0]
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 409
 
 
-def test_sync_steps_force_update(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_sync_steps_force_update(api_client: AsyncClient, inspection_data):
     """Test marking steps as deleted with force=true"""
     step_id_2 = uuid4()
     inspection_data["steps"].append(
@@ -249,14 +241,14 @@ def test_sync_steps_force_update(client: TestClient, inspection_data):
         }
     )
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
 
     # Remove first step
     del inspection_data["steps"][0]
 
-    response = client.put("/inspection?force=true", json=inspection_data)
+    response = await api_client.put("/inspection?force=true", json=inspection_data)
     assert response.status_code == 200
     data = response.json()
     assert len(data["steps"]) == 2
@@ -265,16 +257,17 @@ def test_sync_steps_force_update(client: TestClient, inspection_data):
     assert len(deleted_steps) == 1
 
 
-def test_add_image_links_to_step(client: TestClient, inspection_data, image_id_1):
+@pytest.mark.asyncio
+async def test_add_image_links_to_step(api_client: AsyncClient, inspection_data, image_id_1):
     """Test adding image links to inspection step"""
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
 
     # Add image link to first step
     inspection_data["steps"][0]["image_links"] = [{"image_id": str(image_id_1), "is_deleted": False}]
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -283,19 +276,20 @@ def test_add_image_links_to_step(client: TestClient, inspection_data, image_id_1
     assert data["steps"][0]["image_links"][0]["is_deleted"] is False
 
 
-def test_remove_image_links_from_step(client: TestClient, inspection_data, image_id_1):
+@pytest.mark.asyncio
+async def test_remove_image_links_from_step(api_client: AsyncClient, inspection_data, image_id_1):
     """Test removing image links from inspection step (logical deletion)"""
     # Create with image link
     inspection_data["steps"][0]["image_links"] = [{"image_id": str(image_id_1), "is_deleted": False}]
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
 
     # Remove image link (will be marked as deleted)
     inspection_data["steps"][0]["image_links"] = []
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -304,26 +298,28 @@ def test_remove_image_links_from_step(client: TestClient, inspection_data, image
     assert data["steps"][0]["image_links"][0]["is_deleted"] is True
 
 
-def test_delete_inspection(client: TestClient, inspection_data, inspection_id):
+@pytest.mark.asyncio
+async def test_delete_inspection(api_client: AsyncClient, inspection_data, inspection_id):
     """Test logical deletion of inspection"""
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
     inspection_data["server_modified_at"] = server_modified_at
     inspection_data["is_deleted"] = True
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     # Verify it's marked as deleted
-    get_response = client.get(f"/inspection/by_id/{inspection_id}")
+    get_response = await api_client.get(f"/inspection/by_id/{inspection_id}")
     assert get_response.status_code == 200
     data = get_response.json()
     assert data["is_deleted"] is True
 
 
-def test_step_transfer_not_allowed(client: TestClient, inspection_data, equipment_id):
+@pytest.mark.asyncio
+async def test_step_transfer_not_allowed(api_client: AsyncClient, inspection_data, equipment_id):
     """Test that transferring a step from one inspection to another is not allowed"""
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     assert create_response.status_code == 200
 
     inspection_id_2 = uuid4()
@@ -339,16 +335,17 @@ def test_step_transfer_not_allowed(client: TestClient, inspection_data, equipmen
         "steps": inspection_data["steps"],  # Transfer steps
     }
 
-    response = client.put("/inspection", json=inspection_data_2)
+    response = await api_client.put("/inspection", json=inspection_data_2)
     assert response.status_code == 400
     assert "cannot transfer" in response.json()["detail"].lower()
 
 
-def test_get_all_inspections(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_get_all_inspections(api_client: AsyncClient, inspection_data):
     """Test getting all inspections"""
-    client.put("/inspection", json=inspection_data)
+    await api_client.put("/inspection", json=inspection_data)
 
-    response = client.get("/inspection/all")
+    response = await api_client.get("/inspection/all")
     assert response.status_code == 200
 
     data = response.json()
@@ -356,9 +353,10 @@ def test_get_all_inspections(client: TestClient, inspection_data):
     assert len(data["items"]) >= 1
 
 
-def test_get_inspections_by_plant_id(client: TestClient, inspection_data, plant_id):
+@pytest.mark.asyncio
+async def test_get_inspections_by_plant_id(api_client: AsyncClient, inspection_data, plant_id):
     """Test getting inspections for specific plant"""
-    client.put("/inspection", json=inspection_data)
+    await api_client.put("/inspection", json=inspection_data)
 
     # Create another inspection for different equipment in different plant
     inspection_id_2 = uuid4()
@@ -369,10 +367,10 @@ def test_get_inspections_by_plant_id(client: TestClient, inspection_data, plant_
     inspection_data_2["equipment_id"] = str(equipment_id_2)
     inspection_data_2["steps"][0]["id"] = str(uuid4())
 
-    client.put("/inspection", json=inspection_data_2)
+    await api_client.put("/inspection", json=inspection_data_2)
 
     # Get inspections for first plant
-    response = client.get(f"/inspection/by_plant_id/{plant_id}")
+    response = await api_client.get(f"/inspection/by_plant_id/{plant_id}")
     assert response.status_code == 200
 
     data = response.json()
@@ -384,10 +382,11 @@ def test_get_inspections_by_plant_id(client: TestClient, inspection_data, plant_
         assert "steps" in inspection
 
 
-def test_concurrent_modification_detection(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_concurrent_modification_detection(api_client: AsyncClient, inspection_data):
     """Test concurrent modification detected when another client modifies inspection"""
     # Client A creates inspection
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     assert create_response.status_code == 200
     client_a_timestamp = create_response.json()["server_modified_at"]
 
@@ -423,7 +422,7 @@ def test_concurrent_modification_detection(client: TestClient, inspection_data):
         }
     )
 
-    client_b_response = client.put("/inspection", json=inspection_data_b)
+    client_b_response = await api_client.put("/inspection", json=inspection_data_b)
     assert client_b_response.status_code == 200
     client_b_timestamp = client_b_response.json()["server_modified_at"]
 
@@ -431,7 +430,7 @@ def test_concurrent_modification_detection(client: TestClient, inspection_data):
     inspection_data["server_modified_at"] = client_a_timestamp
     inspection_data["status"] = "COMPLETED"
 
-    response = client.put("/inspection?force=false", json=inspection_data)
+    response = await api_client.put("/inspection?force=false", json=inspection_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -440,7 +439,8 @@ def test_concurrent_modification_detection(client: TestClient, inspection_data):
     assert error_data["server_modified_at"] == client_b_timestamp
 
 
-def test_multiple_operations_in_single_request(client: TestClient, inspection_data, step_id_1):
+@pytest.mark.asyncio
+async def test_multiple_operations_in_single_request(api_client: AsyncClient, inspection_data, step_id_1):
     """Test simultaneously add, update, and delete steps in one PUT"""
     step_id_2 = uuid4()
 
@@ -473,7 +473,7 @@ def test_multiple_operations_in_single_request(client: TestClient, inspection_da
         }
     )
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -514,7 +514,7 @@ def test_multiple_operations_in_single_request(client: TestClient, inspection_da
         }
     )
 
-    response = client.put("/inspection", json=inspection_data)
+    response = await api_client.put("/inspection", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -538,14 +538,15 @@ def test_multiple_operations_in_single_request(client: TestClient, inspection_da
     assert s3["is_deleted"] is False
 
 
-def test_get_all_inspections_with_modified_since_filter(client: TestClient, inspection_data, equipment_id):
+@pytest.mark.asyncio
+async def test_get_all_inspections_with_modified_since_filter(api_client: AsyncClient, inspection_data, equipment_id):
     """Test filtering inspections by modified_since parameter"""
     import time
 
     # Create first inspection
     inspection_id_1 = uuid4()
     inspection_data["id"] = str(inspection_id_1)
-    response1 = client.put("/inspection", json=inspection_data)
+    response1 = await api_client.put("/inspection", json=inspection_data)
     assert response1.status_code == 200
     timestamp1 = response1.json()["server_modified_at"]
 
@@ -557,12 +558,12 @@ def test_get_all_inspections_with_modified_since_filter(client: TestClient, insp
     inspection_data_2["id"] = str(inspection_id_2)
     inspection_data_2["equipment_id"] = str(equipment_id)
     inspection_data_2["steps"][0]["id"] = str(uuid4())
-    response2 = client.put("/inspection", json=inspection_data_2)
+    response2 = await api_client.put("/inspection", json=inspection_data_2)
     assert response2.status_code == 200
     timestamp2 = response2.json()["server_modified_at"]
 
     # Get all inspections without filter - should return both
-    response = client.get("/inspection/all")
+    response = await api_client.get("/inspection/all")
     assert response.status_code == 200
     all_inspections = response.json()["items"]
     inspection_ids = [i["id"] for i in all_inspections]
@@ -570,7 +571,7 @@ def test_get_all_inspections_with_modified_since_filter(client: TestClient, insp
     assert str(inspection_id_2) in inspection_ids
 
     # Get inspections modified after timestamp1 - should only return inspection 2
-    response = client.get(f"/inspection/all?modified_since={timestamp1}")
+    response = await api_client.get(f"/inspection/all?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_inspections = response.json()["items"]
     filtered_ids = [i["id"] for i in filtered_inspections]
@@ -578,7 +579,7 @@ def test_get_all_inspections_with_modified_since_filter(client: TestClient, insp
     assert str(inspection_id_2) in filtered_ids
 
     # Get inspections modified after timestamp2 - should return none
-    response = client.get(f"/inspection/all?modified_since={timestamp2}")
+    response = await api_client.get(f"/inspection/all?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_inspections = response.json()["items"]
     filtered_ids = [i["id"] for i in filtered_inspections]
@@ -586,8 +587,9 @@ def test_get_all_inspections_with_modified_since_filter(client: TestClient, insp
     assert str(inspection_id_2) not in filtered_ids
 
 
-def test_get_inspections_by_plant_with_modified_since_filter(
-    client: TestClient, inspection_data, plant_id, equipment_id
+@pytest.mark.asyncio
+async def test_get_inspections_by_plant_with_modified_since_filter(
+    api_client: AsyncClient, inspection_data, plant_id, equipment_id
 ):
     """Test filtering inspections by plant and modified_since parameter"""
     import time
@@ -595,7 +597,7 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     # Create first inspection
     inspection_id_1 = uuid4()
     inspection_data["id"] = str(inspection_id_1)
-    response1 = client.put("/inspection", json=inspection_data)
+    response1 = await api_client.put("/inspection", json=inspection_data)
     assert response1.status_code == 200
     timestamp1 = response1.json()["server_modified_at"]
 
@@ -607,12 +609,12 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     inspection_data_2["id"] = str(inspection_id_2)
     inspection_data_2["equipment_id"] = str(equipment_id)
     inspection_data_2["steps"][0]["id"] = str(uuid4())
-    response2 = client.put("/inspection", json=inspection_data_2)
+    response2 = await api_client.put("/inspection", json=inspection_data_2)
     assert response2.status_code == 200
     timestamp2 = response2.json()["server_modified_at"]
 
     # Get all inspections for plant without filter - should return both
-    response = client.get(f"/inspection/by_plant_id/{plant_id}")
+    response = await api_client.get(f"/inspection/by_plant_id/{plant_id}")
     assert response.status_code == 200
     all_inspections = response.json()
     inspection_ids = [i["id"] for i in all_inspections]
@@ -620,7 +622,7 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     assert str(inspection_id_2) in inspection_ids
 
     # Get inspections modified after timestamp1 - should only return inspection 2
-    response = client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp1}")
+    response = await api_client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp1}")
     assert response.status_code == 200
     filtered_inspections = response.json()
     filtered_ids = [i["id"] for i in filtered_inspections]
@@ -628,13 +630,14 @@ def test_get_inspections_by_plant_with_modified_since_filter(
     assert str(inspection_id_2) in filtered_ids
 
     # Get inspections modified after timestamp2 - should return none
-    response = client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp2}")
+    response = await api_client.get(f"/inspection/by_plant_id/{plant_id}?modified_since={timestamp2}")
     assert response.status_code == 200
     filtered_inspections = response.json()
     assert len(filtered_inspections) == 0
 
 
-def test_empty_steps_list_without_force(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_empty_steps_list_without_force(api_client: AsyncClient, inspection_data):
     """Test updating from non-empty to empty steps with force=false should reject"""
     step_id_2 = uuid4()
 
@@ -667,7 +670,7 @@ def test_empty_steps_list_without_force(client: TestClient, inspection_data):
         }
     )
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     assert create_response.status_code == 200
     server_modified_at = create_response.json()["server_modified_at"]
 
@@ -675,7 +678,7 @@ def test_empty_steps_list_without_force(client: TestClient, inspection_data):
     inspection_data["server_modified_at"] = server_modified_at
     inspection_data["steps"] = []
 
-    response = client.put("/inspection?force=false", json=inspection_data)
+    response = await api_client.put("/inspection?force=false", json=inspection_data)
     assert response.status_code == 409
 
     error_data = response.json()["detail"]
@@ -683,7 +686,8 @@ def test_empty_steps_list_without_force(client: TestClient, inspection_data):
     assert "extra child" in error_data["message"].lower()
 
 
-def test_empty_steps_list_with_force(client: TestClient, inspection_data):
+@pytest.mark.asyncio
+async def test_empty_steps_list_with_force(api_client: AsyncClient, inspection_data):
     """Test updating from non-empty to empty steps with force=true should mark all as deleted"""
     step_id_2 = uuid4()
 
@@ -716,12 +720,12 @@ def test_empty_steps_list_with_force(client: TestClient, inspection_data):
         }
     )
 
-    client.put("/inspection", json=inspection_data)
+    await api_client.put("/inspection", json=inspection_data)
 
     # Update with empty steps list (force=true)
     inspection_data["steps"] = []
 
-    response = client.put("/inspection?force=true", json=inspection_data)
+    response = await api_client.put("/inspection?force=true", json=inspection_data)
     assert response.status_code == 200
 
     data = response.json()
@@ -732,7 +736,8 @@ def test_empty_steps_list_with_force(client: TestClient, inspection_data):
         assert step["is_deleted"] is True
 
 
-def test_deleted_steps_persist_through_updates(client: TestClient, inspection_data, step_id_1):
+@pytest.mark.asyncio
+async def test_deleted_steps_persist_through_updates(api_client: AsyncClient, inspection_data, step_id_1):
     """Test deleted steps remain in GET response after updates"""
     step_id_2 = uuid4()
 
@@ -765,14 +770,14 @@ def test_deleted_steps_persist_through_updates(client: TestClient, inspection_da
         }
     )
 
-    create_response = client.put("/inspection", json=inspection_data)
+    create_response = await api_client.put("/inspection", json=inspection_data)
     server_modified_at = create_response.json()["server_modified_at"]
 
     # Mark step 2 as deleted
     inspection_data["server_modified_at"] = server_modified_at
     inspection_data["steps"][1]["is_deleted"] = True
 
-    update_response = client.put("/inspection", json=inspection_data)
+    update_response = await api_client.put("/inspection", json=inspection_data)
     assert update_response.status_code == 200
     server_modified_at = update_response.json()["server_modified_at"]
 
@@ -780,11 +785,11 @@ def test_deleted_steps_persist_through_updates(client: TestClient, inspection_da
     inspection_data["server_modified_at"] = server_modified_at
     inspection_data["status"] = "COMPLETED"
 
-    final_response = client.put("/inspection", json=inspection_data)
+    final_response = await api_client.put("/inspection", json=inspection_data)
     assert final_response.status_code == 200
 
     # Verify deleted step is still returned
-    get_response = client.get(f"/inspection/by_id/{inspection_data['id']}")
+    get_response = await api_client.get(f"/inspection/by_id/{inspection_data['id']}")
     assert get_response.status_code == 200
 
     data = get_response.json()
