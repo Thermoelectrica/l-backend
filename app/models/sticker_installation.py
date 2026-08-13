@@ -36,7 +36,6 @@ class StickerInstallationModel(BaseModel):
     kind: StickerEventKind
     sticker_type_id: int
     sticker_color: StickerColor
-    from_sticker_type_id: int
     count: int
     installed_at: datetime
     server_modified_at: datetime = Field(default_factory=datetime.utcnow)
@@ -51,7 +50,6 @@ class StickerInstallaionListItem(BaseModel):
     kind: StickerEventKind
     sticker_type_id: int
     sticker_color: StickerColor
-    from_sticker_type_id: int
     count: int
     installed_at: datetime
 
