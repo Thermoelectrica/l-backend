@@ -8,7 +8,6 @@ SELECT
     kind,
     sticker_type_id,
     sticker_color,
-    from_sticker_type_id,
     count,
     installed_at,
     server_modified_at
@@ -18,14 +17,14 @@ WHERE server_modified_at > :modified_since
 -- WHERE sticker_color = 'YELLOW';
 ORDER BY installed_at DESC;
 
--- name: upsert_sticker(id, control_point_id, inspector_id, kind, sticker_type_id, sticker_color, from_sticker_type_id, count, installed_at)!
+-- name: upsert_sticker(id, control_point_id, inspector_id, kind, sticker_type_id, sticker_color, count, installed_at)!
 -- Insert sticker
 INSERT INTO lesiv.sticker_installation (
     id, control_point_id, inspector_id, kind, sticker_type_id, 
-    sticker_color, from_sticker_type_id, count, installed_at
+    sticker_color, count, installed_at
 ) VALUES (
     :id, :control_point_id, :inspector_id, :kind, :sticker_type_id,
-    :sticker_color, :from_sticker_type_id, :count, :installed_at
+    :sticker_color, :count, :installed_at
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -38,7 +37,6 @@ SELECT
     kind,
     sticker_type_id,
     sticker_color,
-    from_sticker_type_id,
     count,
     installed_at,
     server_modified_at
@@ -55,7 +53,6 @@ SELECT
     si.kind,
     si.sticker_type_id,
     si.sticker_color,
-    si.from_sticker_type_id,
     si.count,
     si.installed_at,
     si.server_modified_at

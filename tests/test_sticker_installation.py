@@ -18,7 +18,6 @@ def fresh_sticker():
         "kind": "INSTALLATION",
         "sticker_type_id": 0,
         "sticker_color": "YELLOW",
-        "from_sticker_type_id": 0,
         "count": 0,
         "installed_at": "2026-07-24T15:42:47.246Z"
     }

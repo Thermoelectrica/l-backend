@@ -244,26 +244,26 @@ async def db_sticker_session():
         await conn.execute(
             """INSERT INTO lesiv.sticker_installation (
                    id, control_point_id, inspector_id, kind, sticker_type_id,
-                   sticker_color, from_sticker_type_id, count, installed_at
+                   sticker_color, count, installed_at
                 ) VALUES (
                    '4fa80f53-5717-4562-b3fc-2c963f66afa9', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                   1, 'INSTALLATION', 0, 'YELLOW', 0, 10, '2026-07-24T15:42:47.246Z'
+                   1, 'INSTALLATION', 0, 'YELLOW', 10, '2026-07-24T15:42:47.246Z'
                 ),
                 (
                    '4fa80f53-5717-4562-b3fc-2c963f66afa8', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                   2, 'INSTALLATION', 0, 'YELLOW', 0, 3, '2026-07-24T15:42:47.246Z'
+                   2, 'INSTALLATION', 0, 'YELLOW', 3, '2026-07-24T15:42:47.246Z'
                 ),
                 (
                    '4fa80f53-5717-4562-b3fc-2c963f66afa7', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                   3, 'INSTALLATION', 0, 'YELLOW', 0, 1, '2026-07-24T15:42:47.246Z'
+                   3, 'INSTALLATION', 0, 'YELLOW', 1, '2026-07-24T15:42:47.246Z'
                 ),
                 (
                    '4fa80f53-5717-4562-b3fc-2c963f66afa1', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                   1, 'INSTALLATION', 0, 'YELLOW', 0, 100, '2026-07-24T15:42:47.246Z'
+                   1, 'INSTALLATION', 0, 'YELLOW', 100, '2026-07-24T15:42:47.246Z'
                 ),
                 (
                    '4fa80f53-5717-4562-b3fc-2c963f66afa2', '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                   51, 'INSTALLATION', 0, 'YELLOW', 0, 100, '2026-07-24T15:42:47.246Z'
+                   51, 'INSTALLATION', 0, 'YELLOW', 100, '2026-07-24T15:42:47.246Z'
                 )
                 ON CONFLICT (id) DO NOTHING;
 
