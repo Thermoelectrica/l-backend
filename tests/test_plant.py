@@ -658,3 +658,74 @@ def test_get_all_plants_modified_since_default(client: TestClient, plant_data):
     assert "items" in data
     plant_ids = [p["id"] for p in data["items"]]
     assert str(plant_data["id"]) in plant_ids
+
+
+# Tests for created_by_user_id (server-set on creation, never changed afterwards)
+
+
+@pytest.fixture
+def auth_service():
+    from app.services.auth import AuthService
+
+    return AuthService()
+
+
+def modify_headers(auth_service, user_id: int) -> dict:
+    """Authorization header for an inspector with MODIFY access level"""
+    access_token = auth_service.create_access_token(user_id, uuid4(), "MODIFY")
+    return {"Authorization": f"Bearer {access_token}"}
+
+
+def test_created_by_user_id_set_from_token_on_create(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that created_by_user_id is filled with the inspector id from the token"""
+    response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 1))
+    assert response.status_code == 200
+    assert response.json()["created_by_user_id"] == 1
+
+    # Persisted and returned by the detail endpoint
+    get_response = client.get(f"/plant/by_id/{plant_id}", headers=modify_headers(auth_service, 1))
+    assert get_response.status_code == 200
+    assert get_response.json()["created_by_user_id"] == 1
+
+    # Also present in the list endpoint
+    list_response = client.get("/plant/all", headers=modify_headers(auth_service, 1))
+    assert list_response.status_code == 200
+    listed = next((p for p in list_response.json()["items"] if p["id"] == str(plant_id)), None)
+    assert listed is not None
+    assert listed["created_by_user_id"] == 1
+
+
+def test_created_by_user_id_not_changed_on_update(client: TestClient, plant_data, auth_service):
+    """Test that a later update by another inspector does not overwrite the creator"""
+    create_response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 1))
+    assert create_response.status_code == 200
+    assert create_response.json()["created_by_user_id"] == 1
+
+    # Inspector 2 updates the plant
+    plant_data["server_modified_at"] = create_response.json()["server_modified_at"]
+    plant_data["name"] = "Updated By Inspector Two"
+
+    update_response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 2))
+    assert update_response.status_code == 200
+    assert update_response.json()["name"] == "Updated By Inspector Two"
+    assert update_response.json()["created_by_user_id"] == 1
+
+
+def test_created_by_user_id_from_body_is_ignored(client: TestClient, plant_data, auth_service):
+    """Test that created_by_user_id is server-authoritative and cannot be set by the client"""
+    plant_data["created_by_user_id"] = 3
+
+    response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 1))
+    assert response.status_code == 200
+    assert response.json()["created_by_user_id"] == 1
+
+
+def test_created_by_user_id_null_for_anonymous_create(client: TestClient, plant_data, plant_id):
+    """Test that the anonymous user (auth disabled) leaves created_by_user_id empty"""
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["created_by_user_id"] is None
+
+    get_response = client.get(f"/plant/by_id/{plant_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["created_by_user_id"] is None

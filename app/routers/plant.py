@@ -85,6 +85,7 @@ async def upsert_plant(
     - Pessimistic lock: Only the user who claimed the plant can modify it
     - Permission: User must have access to the plant
     - New plants become accessible to all active inspectors with MODIFY access level
+    - created_by_user_id is set by the server on creation and cannot be changed by clients
     """
     try:
         async with conn.transaction():
@@ -102,7 +103,15 @@ async def upsert_plant(
 
             # Validate ownership before saving
             await ownership_validator.validate_plant_ownership(plant)
-            result = await plant_repo.save(conn, plant, force=force)
+
+            # Anonymous user (auth disabled) has no inspector row - leave the creator NULL
+            creator_id = permission_service.current_user.id
+            result = await plant_repo.save(
+                conn,
+                plant,
+                force=force,
+                created_by_user_id=creator_id if creator_id != -1 else None,
+            )
 
             # Grant access to all MODIFY inspectors for new plants (creator included)
             if is_new_plant:

@@ -25,6 +25,8 @@ class Plant(BaseModel):
 
     id: UUID
     name: str
+    # Set by the server on creation, never changed afterwards - any client value is ignored
+    created_by_user_id: Optional[int] = None
     claimed_by_device_id: Optional[str] = None
     claimed_by_user_id: Optional[int] = None
     claimed_at: Optional[datetime] = None
@@ -48,6 +50,7 @@ class PlantListItem(BaseModel):
 
     id: UUID
     name: str
+    created_by_user_id: Optional[int] = None
     claimed_by_device_id: Optional[str] = None
     claimed_by_user_id: Optional[int] = None
     claimed_at: Optional[datetime] = None
