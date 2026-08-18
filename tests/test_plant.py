@@ -670,9 +670,14 @@ def auth_service():
     return AuthService()
 
 
-def modify_headers(auth_service, user_id: int) -> dict:
-    """Authorization header for an inspector with MODIFY access level"""
-    access_token = auth_service.create_access_token(user_id, uuid4(), "MODIFY")
+def modify_headers(auth_service, user_id: int, device_id=None) -> dict:
+    """
+    Authorization header for an inspector with MODIFY access level.
+
+    Pass an explicit device_id when the same device must claim and then modify a plant,
+    since the ownership check matches the claim against the device id in the token.
+    """
+    access_token = auth_service.create_access_token(user_id, device_id or uuid4(), "MODIFY")
     return {"Authorization": f"Bearer {access_token}"}
 
 
@@ -695,17 +700,22 @@ def test_created_by_user_id_set_from_token_on_create(client: TestClient, plant_d
     assert listed["created_by_user_id"] == 1
 
 
-def test_created_by_user_id_not_changed_on_update(client: TestClient, plant_data, auth_service):
+def test_created_by_user_id_not_changed_on_update(client: TestClient, plant_data, plant_id, auth_service):
     """Test that a later update by another inspector does not overwrite the creator"""
     create_response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 1))
     assert create_response.status_code == 200
     assert create_response.json()["created_by_user_id"] == 1
 
-    # Inspector 2 updates the plant
-    plant_data["server_modified_at"] = create_response.json()["server_modified_at"]
+    # Inspector 2 must claim the plant before modifying it (pessimistic lock)
+    headers_2 = modify_headers(auth_service, 2, uuid4())
+    claim_response = client.post(f"/plant/by_id/{plant_id}/claim", headers=headers_2)
+    assert claim_response.status_code == 200
+
+    # Claiming bumps server_modified_at, so take the fresh value for the update
+    plant_data["server_modified_at"] = claim_response.json()["server_modified_at"]
     plant_data["name"] = "Updated By Inspector Two"
 
-    update_response = client.put("/plant", json=plant_data, headers=modify_headers(auth_service, 2))
+    update_response = client.put("/plant", json=plant_data, headers=headers_2)
     assert update_response.status_code == 200
     assert update_response.json()["name"] == "Updated By Inspector Two"
     assert update_response.json()["created_by_user_id"] == 1
