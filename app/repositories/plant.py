@@ -50,13 +50,7 @@ class PlantRepository:
         plants = [PlantListItem(**row) for row in plant_rows]
         return PlantListResponse(items=plants)
 
-    async def save(
-        self,
-        conn,
-        plant: Plant,
-        force: bool = False,
-        created_by_user_id: Optional[int] = None,
-    ) -> Plant:
+    async def save(self, conn, plant: Plant, force: bool = False) -> Plant:
         """
         Save plant with facility synchronization and optimistic concurrency control.
         Must be called within transaction.
@@ -66,8 +60,6 @@ class PlantRepository:
             plant_id: Plant ID
             plant: Plant data to save
             force: If True, ignore server_modified_at and mark extra children as deleted
-            created_by_user_id: Inspector who creates the plant. Only used when the plant
-                does not exist yet; never overwrites an existing creator.
 
         Raises:
             ConcurrentModificationError: If concurrent modification detected (force=False)
@@ -99,8 +91,9 @@ class PlantRepository:
             name=plant.name,
             is_deleted=plant.is_deleted,
             server_modified_at=new_server_modified_at,
-            # Only meaningful on insert; the ON CONFLICT branch never touches this column
-            created_by_user_id=created_by_user_id if current is None else None,
+            # Server-authoritative, set by the router. The ON CONFLICT DO UPDATE SET clause
+            # in the SQL excludes this column, so it is written only when the row is inserted.
+            created_by_user_id=plant.created_by_user_id,
         )
 
         # Synchronize facilities

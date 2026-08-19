@@ -104,14 +104,15 @@ async def upsert_plant(
             # Validate ownership before saving
             await ownership_validator.validate_plant_ownership(plant)
 
-            # Anonymous user (auth disabled) has no inspector row - leave the creator NULL
-            creator_id = permission_service.current_user.id
-            result = await plant_repo.save(
-                conn,
-                plant,
-                force=force,
-                created_by_user_id=creator_id if creator_id != -1 else None,
-            )
+            # created_by_user_id is server-authoritative: discard whatever the client sent.
+            # Anonymous user (auth disabled) has no inspector row, so leave the creator NULL.
+            if existing_plant is None:
+                creator_id = permission_service.current_user.id
+                plant.created_by_user_id = creator_id if creator_id != -1 else None
+            else:
+                plant.created_by_user_id = existing_plant.created_by_user_id
+
+            result = await plant_repo.save(conn, plant, force=force)
 
             # Grant access to all MODIFY inspectors for new plants (creator included)
             if is_new_plant:
