@@ -1,6 +1,7 @@
 -- name: get_by_id(id)^
 -- Get plant by ID
-SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at
+SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at,
+    created_by_user_id
 FROM lesiv.plant
 WHERE id = :id;
 
@@ -40,15 +41,18 @@ WHERE id = :facility_id;
 -- name: get_all_plants(modified_since)
 -- Get all plants (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return plants modified after that timestamp
-SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at
+SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at,
+    created_by_user_id
 FROM lesiv.plant
 WHERE server_modified_at > :modified_since
 ORDER BY server_modified_at;
 
--- name: upsert_plant(id, name, is_deleted, server_modified_at)!
+-- name: upsert_plant(id, name, is_deleted, server_modified_at, created_by_user_id)!
 -- Insert or update plant (claim fields are managed separately via claim/release endpoints)
-INSERT INTO lesiv.plant (id, name, is_deleted, server_modified_at)
-VALUES (:id, :name, :is_deleted, :server_modified_at)
+-- created_by_user_id is intentionally absent from DO UPDATE: it is set once on
+-- creation and never changed afterwards.
+INSERT INTO lesiv.plant (id, name, is_deleted, server_modified_at, created_by_user_id)
+VALUES (:id, :name, :is_deleted, :server_modified_at, :created_by_user_id)
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     is_deleted = EXCLUDED.is_deleted,

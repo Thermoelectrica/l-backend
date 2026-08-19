@@ -54,3 +54,10 @@ INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
 VALUES (:inspector_id, :plant_id)
 ON CONFLICT (inspector_id, plant_id) DO NOTHING;
 
+-- name: grant_plant_access_to_modify_inspectors(plant_id)!
+-- Grant access to a plant for every active inspector with MODIFY access level
+INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
+SELECT i.id, CAST(:plant_id AS uuid)
+FROM lesiv.inspector i
+WHERE i.access_level = 'MODIFY' AND NOT i.is_deleted
+ON CONFLICT (inspector_id, plant_id) DO NOTHING;
