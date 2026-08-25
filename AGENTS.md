@@ -112,6 +112,8 @@ PostgreSQL (схема lesiv)
 - Публичные пути (без аутентификации): `/`, `/docs`, `/redoc`, `/openapi.json`, `/auth/*`.
 - Поддерживаются два заголовка: `Authorization: Bearer <token>` и `X-Auth-Token: <token>` (для Yandex Cloud, где `Authorization` перехватывается собственным механизмомо авторизации).
 - После успешной аутентификации объект `Inspector` сохраняется в `request.state.current_user`.
+- `GZipMiddleware` сжимает ответы (`minimum_size=1000`, `compresslevel=6`). Причина: Yandex Serverless Containers ограничивает размер тела ответа, а списочные эндпоинты не имеют пагинации.
+- **Порядок важен**: `GZipMiddleware` регистрируется в `app/main.py` *до* `AuthMiddleware`, то есть находится **внутри** него. `AuthMiddleware` — это `BaseHTTPMiddleware`, который переотправляет ответ потоком (`more_body=True`); если бы GZip был снаружи, Starlette пошёл бы по streaming-ветке, игнорируя `minimum_size` и удаляя `Content-Length`. Тест-страховка: `tests/test_gzip.py`.
 
 ### 4.3 Уровни доступа (AccessLevel)
 
