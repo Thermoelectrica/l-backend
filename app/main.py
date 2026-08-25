@@ -7,6 +7,7 @@ import asyncpg
 import psycopg2
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import settings
 from app.database import close_db_pool, init_db_pool
@@ -122,6 +123,14 @@ app.add_exception_handler(asyncpg.PostgresError, asyncpg_exception_handler)  # p
 app.add_exception_handler(psycopg2.Error, psycopg2_exception_handler)  # pyright: ignore[reportArgumentType]
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # pyright: ignore[reportArgumentType]
 
+
+# Compress responses (Yandex Serverless Containers caps the response payload size).
+# Registered BEFORE AuthMiddleware so that it sits *inside* it: AuthMiddleware is a
+# BaseHTTPMiddleware, which re-streams every response with more_body=True. If GZip were
+# outside it, Starlette would take its streaming branch, ignoring minimum_size (compressing
+# even tiny bodies) and dropping Content-Length. Inside, GZip sees the route's complete
+# response, so both work correctly.
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 # Register authentication middleware (applies to all routes except /auth)
 app.add_middleware(AuthMiddleware)
