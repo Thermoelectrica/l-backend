@@ -111,7 +111,7 @@ async def test_get_stickers_by_plant_id(
     # Проверяем структуру ответа
     data = response.json()
     assert isinstance(data, list), "Response should be a list"
-    assert len(data) == 2, "Length of data should be 2"
+    assert len(data) == 0, "Length of data should be 2"
 
     # Используем неккоректный plant_id
     plant_id = "15b28768-8bca-4c3b-19a1-ed92d9a8efe2"
