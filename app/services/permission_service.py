@@ -236,3 +236,20 @@ class PermissionService:
 
         await queries.grant_plant_access(self.conn, inspector_id=self.current_user.id, plant_id=plant_id)
         logger.info(f"Granted plant access: inspector {self.current_user.id} -> plant {plant_id}")
+
+    async def grant_plant_access_to_modify_inspectors(self, plant_id: UUID) -> None:
+        """
+        Grant access to a plant for all active inspectors with MODIFY access level.
+        This is called when a new plant is created.
+
+        Args:
+            plant_id: UUID of the plant to grant access to
+
+        Note:
+            The creator always has MODIFY level (enforced by require_access_level in the
+            router), so they are covered by this grant as well. Unlike grant_plant_access,
+            this runs for anonymous callers too: the grant belongs to the plant, not to the
+            caller, and anonymous itself needs no row.
+        """
+        await queries.grant_plant_access_to_modify_inspectors(self.conn, plant_id=plant_id)
+        logger.info(f"Granted plant access to all MODIFY inspectors -> plant {plant_id}")

@@ -46,7 +46,7 @@ WHERE id = :id;
 -- name: get_by_plant_id(plant_id, modified_since)
 -- Get all stickers for plant (full data for aggregates)
 -- :modified_since defaults to 1790-01-01 - only return inspections modified after that timestamp
-SELECT 
+SELECT
     si.id,
     si.control_point_id,
     si.inspector_id,
@@ -57,7 +57,9 @@ SELECT
     si.installed_at,
     si.server_modified_at
 FROM lesiv.sticker_installation si
-JOIN lesiv.inspector_plant_access ipa ON si.inspector_id = ipa.inspector_id
-WHERE ipa.plant_id = :plant_id
+JOIN lesiv.equipment_control_point ecp ON ecp.id = si.control_point_id
+JOIN lesiv.equipment e ON e.id = ecp.equipment_id
+JOIN lesiv.facility f ON f.id = e.facility_id
+WHERE f.plant_id = :plant_id
   AND si.server_modified_at > :modified_since
 ORDER BY si.server_modified_at;

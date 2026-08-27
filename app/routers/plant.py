@@ -84,6 +84,8 @@ async def upsert_plant(
     - Never allows "stealing" facilities from other plants
     - Pessimistic lock: Only the user who claimed the plant can modify it
     - Permission: User must have access to the plant
+    - New plants become accessible to all active inspectors with MODIFY access level
+    - created_by_user_id is set by the server on creation and cannot be changed by clients
     """
     try:
         async with conn.transaction():
@@ -101,11 +103,20 @@ async def upsert_plant(
 
             # Validate ownership before saving
             await ownership_validator.validate_plant_ownership(plant)
+
+            # created_by_user_id is server-authoritative: discard whatever the client sent.
+            # Anonymous user (auth disabled) has no inspector row, so leave the creator NULL.
+            if existing_plant is None:
+                creator_id = permission_service.current_user.id
+                plant.created_by_user_id = creator_id if creator_id != -1 else None
+            else:
+                plant.created_by_user_id = existing_plant.created_by_user_id
+
             result = await plant_repo.save(conn, plant, force=force)
 
-            # Grant access to creator for new plants
+            # Grant access to all MODIFY inspectors for new plants (creator included)
             if is_new_plant:
-                await permission_service.grant_plant_access(plant.id)
+                await permission_service.grant_plant_access_to_modify_inspectors(plant.id)
 
         return result
     except ConcurrentModificationError as e:

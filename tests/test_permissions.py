@@ -221,24 +221,24 @@ async def test_user_without_access_cannot_view_plant(
         headers={"Authorization": f"Bearer {access_token_1}"},
     )
 
-    # User 2 tries to access without permission
-    device_id_2 = uuid4()
-    user_id_2 = 2
-    access_token_2 = auth_service.create_access_token(user_id_2, device_id_2, "MODIFY")
+    # Inspector 4 (READ level, never granted access to this plant) tries to access it
+    reader_device_id = uuid4()
+    reader_id = 4
+    reader_token = auth_service.create_access_token(reader_id, reader_device_id, "READ")
 
     response = client.get(
         f"/plant/by_id/{plant_id}",
-        headers={"Authorization": f"Bearer {access_token_2}"},
+        headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 403
 
-    # Grant access to user 2
-    await grant_plant_access(plant_id, user_id_2)
+    # Grant access to inspector 4
+    await grant_plant_access(plant_id, reader_id)
 
-    # Now user 2 can access
+    # Now inspector 4 can access
     response = client.get(
         f"/plant/by_id/{plant_id}",
-        headers={"Authorization": f"Bearer {access_token_2}"},
+        headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 200
 
@@ -326,23 +326,23 @@ async def test_equipment_access_requires_plant_access(
         headers={"Authorization": f"Bearer {access_token_1}"},
     )
 
-    # User 2 without plant access cannot view equipment
-    user_id_2 = 2
-    access_token_2 = auth_service.create_access_token(user_id_2, uuid4(), "MODIFY")
+    # Inspector 4 (READ level) has no plant access and cannot view equipment
+    reader_id = 4
+    reader_token = auth_service.create_access_token(reader_id, uuid4(), "READ")
 
     response = client.get(
         f"/equipment/by_id/{equipment_data['id']}",
-        headers={"Authorization": f"Bearer {access_token_2}"},
+        headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 403
 
-    # Grant plant access to user 2
-    await grant_plant_access(plant_id, user_id_2)
+    # Grant plant access to inspector 4
+    await grant_plant_access(plant_id, reader_id)
 
-    # Now user 2 can view equipment
+    # Now inspector 4 can view equipment
     response = client.get(
         f"/equipment/by_id/{equipment_data['id']}",
-        headers={"Authorization": f"Bearer {access_token_2}"},
+        headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 200
 
@@ -419,13 +419,13 @@ def test_deleted_plant_access_still_enforced(client: TestClient, plant_data, aut
         headers={"Authorization": f"Bearer {access_token_1}"},
     )
 
-    # User 2 still cannot access deleted plant without permission
-    user_id_2 = 2
-    access_token_2 = auth_service.create_access_token(user_id_2, uuid4(), "MODIFY")
+    # Inspector 4 (READ level) still cannot access the deleted plant without permission
+    reader_id = 4
+    reader_token = auth_service.create_access_token(reader_id, uuid4(), "READ")
 
     response = client.get(
         f"/plant/by_id/{plant_data['id']}",
-        headers={"Authorization": f"Bearer {access_token_2}"},
+        headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 403
 
@@ -456,3 +456,48 @@ def test_release_plant_grants_access(client: TestClient, plant_data, plant_id, a
         headers={"Authorization": f"Bearer {access_token}"},
     )
     assert response.status_code == 200
+
+
+def test_all_modify_inspectors_get_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that creating a plant grants access to every MODIFY inspector, not just the creator"""
+    # User 1 creates the plant
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    # User 3 (MODIFY level) never touched this plant but should still see it
+    other_token = auth_service.create_access_token(3, uuid4(), "MODIFY")
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert response.status_code == 200
+
+    response = client.get("/plant/all", headers={"Authorization": f"Bearer {other_token}"})
+    assert response.status_code == 200
+    assert str(plant_id) in [p["id"] for p in response.json()["items"]]
+
+
+def test_read_level_inspector_does_not_get_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that the new-plant grant is limited to MODIFY inspectors"""
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    # Inspector 4 has READ level and must not be granted access
+    reader_token = auth_service.create_access_token(4, uuid4(), "READ")
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {reader_token}"},
+    )
+    assert response.status_code == 403

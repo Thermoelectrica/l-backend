@@ -27,8 +27,8 @@ GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
 -- Plant permissions
 -- ============================================================================
 
--- inspector_plant_access: SELECT
-GRANT SELECT ON lesiv.inspector_plant_access TO l_app_role;
+-- inspector_plant_access: SELECT, INSERT (access is granted when a user creates or claims a plant)
+GRANT SELECT, INSERT ON lesiv.inspector_plant_access TO l_app_role;
 
 -- ============================================================================
 -- Inspector Aggregate

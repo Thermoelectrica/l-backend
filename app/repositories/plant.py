@@ -91,6 +91,9 @@ class PlantRepository:
             name=plant.name,
             is_deleted=plant.is_deleted,
             server_modified_at=new_server_modified_at,
+            # Server-authoritative, set by the router. The ON CONFLICT DO UPDATE SET clause
+            # in the SQL excludes this column, so it is written only when the row is inserted.
+            created_by_user_id=plant.created_by_user_id,
         )
 
         # Synchronize facilities
