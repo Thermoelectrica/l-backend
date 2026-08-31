@@ -14,11 +14,13 @@ class AccessLevel(str, Enum):
     - READ: Can only perform GET operations
     - INSPECT: Can perform GET operations and add inspections/defects
     - MODIFY: Can perform all operations including claiming plants and modifying equipment
+    - VERIFY: Everything MODIFY can do, plus verification operations
     """
 
     READ = "READ"
     INSPECT = "INSPECT"
     MODIFY = "MODIFY"
+    VERIFY = "VERIFY"
 
 
 class Inspector(BaseModel):
