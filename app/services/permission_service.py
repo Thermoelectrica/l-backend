@@ -25,6 +25,7 @@ ACCESS_LEVEL_HIERARCHY = {
     AccessLevel.READ: 0,
     AccessLevel.INSPECT: 1,
     AccessLevel.MODIFY: 2,
+    AccessLevel.VERIFY: 3,
 }
 
 
@@ -239,17 +240,21 @@ class PermissionService:
 
     async def grant_plant_access_to_modify_inspectors(self, plant_id: UUID) -> None:
         """
-        Grant access to a plant for all active inspectors with MODIFY access level.
-        This is called when a new plant is created.
+        Grant access to a plant for all active inspectors with MODIFY level or higher
+        (MODIFY, VERIFY). This is called when a new plant is created.
 
         Args:
             plant_id: UUID of the plant to grant access to
 
         Note:
-            The creator always has MODIFY level (enforced by require_access_level in the
-            router), so they are covered by this grant as well. Unlike grant_plant_access,
-            this runs for anonymous callers too: the grant belongs to the plant, not to the
-            caller, and anonymous itself needs no row.
+            The creator always has at least MODIFY level (enforced by require_access_level
+            in the router), so they are covered by this grant as well. Unlike
+            grant_plant_access, this runs for anonymous callers too: the grant belongs to
+            the plant, not to the caller, and anonymous itself needs no row.
+
+            The underlying query matches access levels explicitly, so any level added above
+            MODIFY in ACCESS_LEVEL_HIERARCHY must also be added to the IN list in
+            app/queries/permission.sql.
         """
         await queries.grant_plant_access_to_modify_inspectors(self.conn, plant_id=plant_id)
-        logger.info(f"Granted plant access to all MODIFY inspectors -> plant {plant_id}")
+        logger.info(f"Granted plant access to all MODIFY+ inspectors -> plant {plant_id}")

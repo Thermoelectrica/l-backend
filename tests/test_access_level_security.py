@@ -64,7 +64,7 @@ def test_jwt_token_scope_variations():
     auth_service = AuthService()
     device_id = str(uuid4())
 
-    for access_level in ["READ", "INSPECT", "MODIFY"]:
+    for access_level in ["READ", "INSPECT", "MODIFY", "VERIFY"]:
         access_token = auth_service.create_access_token(inspector_id=1, device_id=device_id, access_level=access_level)
 
         # Decode and verify

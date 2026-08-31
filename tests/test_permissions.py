@@ -5,7 +5,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.models.inspector import AccessLevel
 from app.services.auth import AuthService
+from app.services.permission_service import ACCESS_LEVEL_HIERARCHY
 
 
 @pytest.fixture
@@ -501,3 +503,80 @@ def test_read_level_inspector_does_not_get_access_to_new_plant(client: TestClien
         headers={"Authorization": f"Bearer {reader_token}"},
     )
     assert response.status_code == 403
+
+
+# ============================================================================
+# VERIFY Level Tests
+#
+# VERIFY is a strict superset of MODIFY: it must clear every gate MODIFY clears.
+# Inspector 5 has VERIFY level and is deliberately NOT pre-granted plant access
+# in scripts/init_test_data.sql.
+# ============================================================================
+
+
+def test_every_access_level_has_a_hierarchy_rank():
+    """Every AccessLevel member must have a rank.
+
+    ACCESS_LEVEL_HIERARCHY.get(level, 0) silently degrades an unmapped level to rank 0
+    (= READ), so a missing entry would quietly strip privileges instead of raising.
+    """
+    assert set(AccessLevel) == set(ACCESS_LEVEL_HIERARCHY)
+
+
+def test_verify_level_outranks_modify():
+    """VERIFY must sit strictly above MODIFY in the hierarchy"""
+    assert ACCESS_LEVEL_HIERARCHY[AccessLevel.VERIFY] > ACCESS_LEVEL_HIERARCHY[AccessLevel.MODIFY]
+
+
+def test_verify_level_can_create_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that VERIFY level users clear the MODIFY gate on plant upsert"""
+    verifier_token = auth_service.create_access_token(5, uuid4(), "VERIFY")
+
+    response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {verifier_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == str(plant_id)
+
+
+def test_verify_level_can_claim_and_release_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that VERIFY level users clear the MODIFY gate on claim and release"""
+    client.put("/plant", json=plant_data)
+
+    user_id = 5
+    headers = {"Authorization": f"Bearer {auth_service.create_access_token(user_id, uuid4(), 'VERIFY')}"}
+
+    claim_response = client.post(f"/plant/by_id/{plant_id}/claim", headers=headers)
+    assert claim_response.status_code == 200
+    assert claim_response.json()["claimed_by_user_id"] == user_id
+
+    release_response = client.post(f"/plant/by_id/{plant_id}/release", headers=headers)
+    assert release_response.status_code == 200
+    assert release_response.json()["claimed_by_user_id"] is None
+
+
+def test_verify_inspector_gets_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that the new-plant auto-grant covers VERIFY inspectors, not just MODIFY ones"""
+    # User 1 (MODIFY) creates the plant
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    # Inspector 5 (VERIFY) never touched this plant but should still see it
+    verifier_token = auth_service.create_access_token(5, uuid4(), "VERIFY")
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {verifier_token}"},
+    )
+    assert response.status_code == 200
+
+    response = client.get("/plant/all", headers={"Authorization": f"Bearer {verifier_token}"})
+    assert response.status_code == 200
+    assert str(plant_id) in [p["id"] for p in response.json()["items"]]

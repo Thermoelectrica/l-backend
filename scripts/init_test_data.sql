@@ -10,14 +10,16 @@
 -- Insert test inspectors with bcrypt hashed passwords
 -- Password for all test users: 'password123'
 -- Hash generated with: bcrypt.hashpw(b'password123', bcrypt.gensalt(rounds=12))
--- Inspectors 1-3 have MODIFY access level; inspector 4 has READ (used by negative permission tests)
+-- Inspectors 1-3 have MODIFY access level; inspector 4 has READ (used by negative permission
+-- tests); inspector 5 has VERIFY (MODIFY + verification).
 
 INSERT INTO lesiv.inspector (id, full_name, username, password_hash, access_level, server_modified_at)
 VALUES
     (1, 'Test Inspector', 'test_user', '$2b$12$.Ka2kYiM7M9s0riJw6Afb.lCxPg.4.3XVl3pJ9MiTmf6Ragk3PhfC', 'MODIFY', CURRENT_TIMESTAMP),
     (2, 'Вася Пупкин', 'vpupkin', '$2b$12$HwXpgvzRi9C4vHYcnSZE3.YNFoqqj7qcb0i8F/uGT7s57anKxb8Zy', 'MODIFY', CURRENT_TIMESTAMP),
     (3, 'Евлампия Иннокеньтевна', 'evinok', '$2b$12$ZhZN0Yce0R4fAcSpbVT1zOIH3ML26IfPFcHTxqQova84S2MerskBe', 'MODIFY', CURRENT_TIMESTAMP),
-    (4, 'Читатель Читателев', 'reader', '$2b$12$.Ka2kYiM7M9s0riJw6Afb.lCxPg.4.3XVl3pJ9MiTmf6Ragk3PhfC', 'READ', CURRENT_TIMESTAMP)
+    (4, 'Читатель Читателев', 'reader', '$2b$12$.Ka2kYiM7M9s0riJw6Afb.lCxPg.4.3XVl3pJ9MiTmf6Ragk3PhfC', 'READ', CURRENT_TIMESTAMP),
+    (5, 'Проверяющий Проверяев', 'verifier', '$2b$12$.Ka2kYiM7M9s0riJw6Afb.lCxPg.4.3XVl3pJ9MiTmf6Ragk3PhfC', 'VERIFY', CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET access_level = EXCLUDED.access_level;
 
 -- Reset sequence for inspector to ensure new inspectors get IDs after the seeded ones
@@ -27,7 +29,9 @@ SELECT setval('lesiv.inspector_id_seq', (SELECT MAX(id) FROM lesiv.inspector));
 -- Grant plant access to test inspectors
 -- ============================================================================
 -- Grant access to all existing plants for test inspectors
--- This is needed because the permission system requires explicit plant access
+-- This is needed because the permission system requires explicit plant access.
+-- Inspector 5 (VERIFY) is deliberately excluded: the new-plant auto-grant is what must
+-- give it access, and test_verify_inspector_gets_access_to_new_plant asserts exactly that.
 
 INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
 SELECT i.id, p.id
