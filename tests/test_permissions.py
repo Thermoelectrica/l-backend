@@ -184,8 +184,12 @@ def test_user_can_access_plant_they_created(client: TestClient, plant_data, auth
     assert response.status_code == 200
 
 
-def test_user_gets_access_when_claiming_plant(client: TestClient, plant_data, plant_id, auth_service):
-    """Test that users get access to plants when they claim them"""
+def test_user_with_access_can_claim_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that a user who already has plant access can claim it.
+
+    Claiming does NOT confer access - see test_claim_requires_existing_plant_access. Inspector 1
+    is internal with MODIFY, so the new-plant auto-grant already gave it access on creation.
+    """
     # Create plant without auth
     client.put("/plant", json=plant_data)
 
@@ -200,7 +204,7 @@ def test_user_gets_access_when_claiming_plant(client: TestClient, plant_data, pl
     )
     assert claim_response.status_code == 200
 
-    # User should now have access
+    # User still has access
     response = client.get(
         f"/plant/by_id/{plant_id}",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -432,8 +436,11 @@ def test_deleted_plant_access_still_enforced(client: TestClient, plant_data, aut
     assert response.status_code == 403
 
 
-def test_release_plant_grants_access(client: TestClient, plant_data, plant_id, auth_service):
-    """Test that releasing a plant grants access to the releaser"""
+def test_release_plant_keeps_access(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that releasing a plant leaves the releaser's access intact.
+
+    Releasing does NOT confer access - see test_release_requires_existing_plant_access.
+    """
     # Create plant
     client.put("/plant", json=plant_data)
 
@@ -460,8 +467,8 @@ def test_release_plant_grants_access(client: TestClient, plant_data, plant_id, a
     assert response.status_code == 200
 
 
-def test_all_modify_inspectors_get_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
-    """Test that creating a plant grants access to every MODIFY inspector, not just the creator"""
+def test_all_internal_modify_inspectors_get_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that creating a plant grants access to every internal MODIFY inspector, not just the creator"""
     # User 1 creates the plant
     creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
     create_response = client.put(
@@ -580,3 +587,129 @@ def test_verify_inspector_gets_access_to_new_plant(client: TestClient, plant_dat
     response = client.get("/plant/all", headers={"Authorization": f"Bearer {verifier_token}"})
     assert response.status_code == 200
     assert str(plant_id) in [p["id"] for p in response.json()["items"]]
+
+
+# ============================================================================
+# External User Tests
+#
+# External inspectors (inspector.is_internal = FALSE) are limited to a predefined list of
+# plants. Inspector 6 is external with MODIFY level and is deliberately NOT pre-granted any
+# plant access in scripts/init_test_data.sql.
+# ============================================================================
+
+
+def test_external_inspector_does_not_get_access_to_new_plant(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that the new-plant auto-grant skips external inspectors even at MODIFY level"""
+    # Inspector 1 (internal, MODIFY) creates the plant
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    # Inspector 6 is external and must not have been granted access
+    external_token = auth_service.create_access_token(6, uuid4(), "MODIFY")
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {external_token}"},
+    )
+    assert response.status_code == 403
+
+    response = client.get("/plant/all", headers={"Authorization": f"Bearer {external_token}"})
+    assert response.status_code == 200
+    assert str(plant_id) not in [p["id"] for p in response.json()["items"]]
+
+
+def test_external_inspector_keeps_access_to_plant_it_created(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that an external inspector keeps access to a plant it created itself.
+
+    The internal-inspector broadcast does not match an external creator, so the plant router
+    grants the creator access explicitly. Without that grant the creator would immediately lose
+    the plant it just created.
+    """
+    external_token = auth_service.create_access_token(6, uuid4(), "MODIFY")
+
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {external_token}"},
+    )
+    assert create_response.status_code == 200
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {external_token}"},
+    )
+    assert response.status_code == 200
+
+    response = client.get("/plant/all", headers={"Authorization": f"Bearer {external_token}"})
+    assert response.status_code == 200
+    assert str(plant_id) in [p["id"] for p in response.json()["items"]]
+
+
+def test_internal_inspectors_get_access_to_plant_created_by_external(
+    client: TestClient, plant_data, plant_id, auth_service
+):
+    """Test that a plant created by an external user is still broadcast to internal inspectors"""
+    external_token = auth_service.create_access_token(6, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {external_token}"},
+    )
+    assert create_response.status_code == 200
+
+    # Inspector 3 (internal, MODIFY) never touched this plant but should still see it
+    internal_token = auth_service.create_access_token(3, uuid4(), "MODIFY")
+
+    response = client.get(
+        f"/plant/by_id/{plant_id}",
+        headers={"Authorization": f"Bearer {internal_token}"},
+    )
+    assert response.status_code == 200
+
+
+def test_claim_requires_existing_plant_access(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that claiming does not confer plant access.
+
+    Claiming used to grant access to any MODIFY caller, which would let an external user escape
+    its predefined plant list by guessing a plant UUID.
+    """
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    external_headers = {"Authorization": f"Bearer {auth_service.create_access_token(6, uuid4(), 'MODIFY')}"}
+
+    claim_response = client.post(f"/plant/by_id/{plant_id}/claim", headers=external_headers)
+    assert claim_response.status_code == 403
+
+    # And no access leaked through the rejected claim
+    response = client.get(f"/plant/by_id/{plant_id}", headers=external_headers)
+    assert response.status_code == 403
+
+
+def test_release_requires_existing_plant_access(client: TestClient, plant_data, plant_id, auth_service):
+    """Test that releasing does not confer plant access either"""
+    creator_token = auth_service.create_access_token(1, uuid4(), "MODIFY")
+    create_response = client.put(
+        "/plant",
+        json=plant_data,
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert create_response.status_code == 200
+
+    external_headers = {"Authorization": f"Bearer {auth_service.create_access_token(6, uuid4(), 'MODIFY')}"}
+
+    release_response = client.post(f"/plant/by_id/{plant_id}/release", headers=external_headers)
+    assert release_response.status_code == 403
+
+    response = client.get(f"/plant/by_id/{plant_id}", headers=external_headers)
+    assert response.status_code == 403

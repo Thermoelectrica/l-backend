@@ -54,10 +54,12 @@ INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
 VALUES (:inspector_id, :plant_id)
 ON CONFLICT (inspector_id, plant_id) DO NOTHING;
 
--- name: grant_plant_access_to_modify_inspectors(plant_id)!
--- Grant access to a plant for every active inspector with MODIFY or higher access level
+-- name: grant_plant_access_to_internal_inspectors(plant_id)!
+-- Grant access to a plant for every active INTERNAL inspector with MODIFY or higher access level.
+-- External inspectors are deliberately excluded: they are limited to a predefined list of plants
+-- granted to them explicitly, so plants created later must not appear for them automatically.
 INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
 SELECT i.id, CAST(:plant_id AS uuid)
 FROM lesiv.inspector i
-WHERE i.access_level IN ('MODIFY', 'VERIFY') AND NOT i.is_deleted
+WHERE i.access_level IN ('MODIFY', 'VERIFY') AND NOT i.is_deleted AND i.is_internal
 ON CONFLICT (inspector_id, plant_id) DO NOTHING;
