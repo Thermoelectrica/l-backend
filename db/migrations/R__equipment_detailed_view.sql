@@ -40,13 +40,24 @@ last_inspection AS (
     ORDER BY i.equipment_id, i.started_at DESC
 ),
 control_point_summary AS (
-    -- Sum control points and stickers for each equipment
+    -- Sum control points for each equipment
     SELECT 
         ecp.equipment_id,
-        COALESCE(SUM(ecp.point_count), 0) AS total_point_count,
-        COALESCE(SUM(si.count), 0) AS total_sticker_count
+        COALESCE(SUM(ecp.point_count), 0) AS total_point_count
     FROM lesiv.equipment_control_point ecp
-        LEFT OUTER JOIN lesiv.sticker_installation si ON ecp.id = si.control_point_id
+    WHERE ecp.is_deleted = FALSE
+    GROUP BY ecp.equipment_id
+),
+sticker_summary AS (
+    -- Sum stickers actually installed on each equipment.
+    -- Aggregated separately from control_point_summary: sticker_installation is an event log
+    -- with 0..N rows per control point, so summing both facts in one CTE would repeat each
+    -- equipment_control_point row per sticker event and multiply total_point_count.
+    SELECT 
+        ecp.equipment_id,
+        COALESCE(SUM(si.count), 0) AS total_sticker_count
+    FROM lesiv.sticker_installation si
+        INNER JOIN lesiv.equipment_control_point ecp ON ecp.id = si.control_point_id
     WHERE ecp.is_deleted = FALSE
     GROUP BY ecp.equipment_id
 ),
@@ -95,7 +106,7 @@ SELECT
     
     -- Control point and sticker summary
     COALESCE(cps.total_point_count, 0) AS total_point_count,
-    COALESCE(cps.total_sticker_count, 0) AS total_sticker_count,
+    COALESCE(ss.total_sticker_count, 0) AS total_sticker_count,
     
     -- Defect summary
     COALESCE(ds.active_defect_count, 0) AS active_defect_count,
@@ -109,6 +120,7 @@ FROM lesiv.equipment e
     LEFT JOIN lesiv.equipment_type et ON e.equipment_type_id = et.id
     LEFT JOIN last_inspection li ON e.id = li.equipment_id
     LEFT JOIN control_point_summary cps ON e.id = cps.equipment_id
+    LEFT JOIN sticker_summary ss ON e.id = ss.equipment_id
     LEFT JOIN defect_summary ds ON e.id = ds.equipment_id;
 
 -- Create an index on the underlying equipment table for better view performance
