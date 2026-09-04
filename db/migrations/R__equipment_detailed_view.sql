@@ -44,8 +44,9 @@ control_point_summary AS (
     SELECT 
         ecp.equipment_id,
         COALESCE(SUM(ecp.point_count), 0) AS total_point_count,
-        COALESCE(SUM(ecp.sticker_count), 0) AS total_sticker_count
+        COALESCE(SUM(si.count), 0) AS total_sticker_count
     FROM lesiv.equipment_control_point ecp
+    JOIN lesiv.sticker_installation si on ecp.id = si.control_point_id
     WHERE ecp.is_deleted = FALSE
     GROUP BY ecp.equipment_id
 ),
