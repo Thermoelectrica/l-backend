@@ -84,7 +84,8 @@ async def upsert_plant(
     - Never allows "stealing" facilities from other plants
     - Pessimistic lock: Only the user who claimed the plant can modify it
     - Permission: User must have access to the plant
-    - New plants become accessible to all active inspectors with MODIFY access level
+    - New plants become accessible to all active internal inspectors with MODIFY access
+      level or higher, plus the creator (who may be external)
     - created_by_user_id is set by the server on creation and cannot be changed by clients
     """
     try:
@@ -114,9 +115,12 @@ async def upsert_plant(
 
             result = await plant_repo.save(conn, plant, force=force)
 
-            # Grant access to all MODIFY inspectors for new plants (creator included)
             if is_new_plant:
-                await permission_service.grant_plant_access_to_modify_inspectors(plant.id)
+                # Internal MODIFY+ inspectors see every new plant.
+                await permission_service.grant_plant_access_to_internal_inspectors(plant.id)
+                # The broadcast above skips external creators, so grant the creator explicitly.
+                # No-op for internal creators (ON CONFLICT DO NOTHING) and for anonymous (id == -1).
+                await permission_service.grant_plant_access(plant.id)
 
         return result
     except ConcurrentModificationError as e:
@@ -150,20 +154,16 @@ async def claim_plant(
 
     Returns 409 if plant is claimed by another user and claim is not stale.
     Returns the updated plant state with claim information.
-    Permission: User must have access to the plant.
+    Permission: User must already have access to the plant.
     """
     # Check access level (MODIFY required)
     permission_service.require_access_level(AccessLevel.MODIFY)
 
-    # Check if user has plant access, if not grant it
-    # Claiming a plant should grant access to the claimer
-    has_access = await permission_service.check_plant_access(plant_id)
+    # Claiming must not confer access: it would let anyone who can guess a plant UUID escape
+    # the plant list they were granted. External users are limited to a predefined list.
+    await permission_service.require_plant_access(plant_id)
 
     async with conn.transaction():
-        # Grant access if user doesn't have it yet
-        if not has_access:
-            await permission_service.grant_plant_access(plant_id)
-
         success = await plant_repo.claim(
             conn,
             plant_id,
@@ -215,20 +215,15 @@ async def release_plant(
     Release plant claim.
 
     Returns the updated plant state with cleared claim information.
-    Permission: User must have access to the plant.
+    Permission: User must already have access to the plant.
     """
     # Check access level (MODIFY required)
     permission_service.require_access_level(AccessLevel.MODIFY)
 
-    # Check if user has plant access, if not grant it
-    # Releasing a plant should grant access to the releaser
-    has_access = await permission_service.check_plant_access(plant_id)
+    # Releasing must not confer access either - same reasoning as claim.
+    await permission_service.require_plant_access(plant_id)
 
     async with conn.transaction():
-        # Grant access if user doesn't have it yet
-        if not has_access:
-            await permission_service.grant_plant_access(plant_id)
-
         success = await plant_repo.release(conn, plant_id)
 
     if not success:
