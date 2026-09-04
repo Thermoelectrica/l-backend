@@ -40,13 +40,16 @@ last_inspection AS (
     ORDER BY i.equipment_id, i.started_at DESC
 ),
 control_point_summary AS (
-    -- Sum control points and stickers for each equipment
-    SELECT 
+    SELECT
         ecp.equipment_id,
         COALESCE(SUM(ecp.point_count), 0) AS total_point_count,
-        COALESCE(SUM(si.count), 0) AS total_sticker_count
+        COALESCE(SUM(sti.installed_count), 0) AS total_sticker_count
     FROM lesiv.equipment_control_point ecp
-        LEFT OUTER JOIN lesiv.sticker_installation si ON ecp.id = si.control_point_id
+        LEFT OUTER JOIN (
+            SELECT si.control_point_id, SUM(si.count) AS installed_count
+            FROM lesiv.sticker_installation si
+            GROUP BY si.control_point_id
+        ) sti ON sti.control_point_id = ecp.id
     WHERE ecp.is_deleted = FALSE
     GROUP BY ecp.equipment_id
 ),
