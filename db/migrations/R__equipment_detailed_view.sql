@@ -26,7 +26,7 @@ WITH RECURSIVE equipment_path AS (
         ep.path || ' > ' || e.name AS path,
         ep.depth + 1 AS depth
     FROM lesiv.equipment e
-    INNER JOIN equipment_path ep ON e.parent_id = ep.id
+        INNER JOIN equipment_path ep ON e.parent_id = ep.id
 ),
 last_inspection AS (
     -- Get the most recent inspection for each equipment
@@ -35,7 +35,7 @@ last_inspection AS (
         i.started_at AS last_inspection_date,
         insp.full_name AS last_inspector_name
     FROM lesiv.inspection i
-    INNER JOIN lesiv.inspector insp ON i.inspector_id = insp.id
+        INNER JOIN lesiv.inspector insp ON i.inspector_id = insp.id
     WHERE i.is_deleted = FALSE
     ORDER BY i.equipment_id, i.started_at DESC
 ),
@@ -46,7 +46,7 @@ control_point_summary AS (
         COALESCE(SUM(ecp.point_count), 0) AS total_point_count,
         COALESCE(SUM(si.count), 0) AS total_sticker_count
     FROM lesiv.equipment_control_point ecp
-    JOIN lesiv.sticker_installation si on ecp.id = si.control_point_id
+        LEFT OUTER JOIN lesiv.sticker_installation si ON ecp.id = si.control_point_id
     WHERE ecp.is_deleted = FALSE
     GROUP BY ecp.equipment_id
 ),
@@ -103,13 +103,13 @@ SELECT
     COALESCE(ds.active_defect_count, 0) + COALESCE(ds.resolved_defect_count, 0) AS total_defect_count
     
 FROM lesiv.equipment e
-LEFT JOIN equipment_path ep ON e.id = ep.id
-INNER JOIN lesiv.facility f ON e.facility_id = f.id
-INNER JOIN lesiv.plant p ON f.plant_id = p.id
-LEFT JOIN lesiv.equipment_type et ON e.equipment_type_id = et.id
-LEFT JOIN last_inspection li ON e.id = li.equipment_id
-LEFT JOIN control_point_summary cps ON e.id = cps.equipment_id
-LEFT JOIN defect_summary ds ON e.id = ds.equipment_id;
+    LEFT JOIN equipment_path ep ON e.id = ep.id
+    INNER JOIN lesiv.facility f ON e.facility_id = f.id
+    INNER JOIN lesiv.plant p ON f.plant_id = p.id
+    LEFT JOIN lesiv.equipment_type et ON e.equipment_type_id = et.id
+    LEFT JOIN last_inspection li ON e.id = li.equipment_id
+    LEFT JOIN control_point_summary cps ON e.id = cps.equipment_id
+    LEFT JOIN defect_summary ds ON e.id = ds.equipment_id;
 
 -- Create an index on the underlying equipment table for better view performance
 -- (if not already exists from previous migrations)
