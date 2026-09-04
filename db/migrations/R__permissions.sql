@@ -167,7 +167,7 @@ GRANT SELECT ON lesiv.equipment_detailed_view TO l_app_role;
 
 -- create_inspector: used by admin scripts to create inspectors with hashed passwords
 GRANT EXECUTE ON FUNCTION lesiv.create_inspector
-(TEXT, TEXT, TEXT, lesiv.access_level, BOOLEAN) TO l_app_role;
+(TEXT, TEXT, TEXT, lesiv.access_level, BOOLEAN, BOOLEAN) TO l_app_role;
 
 -- change_password: called by the app for password change operations
 GRANT EXECUTE ON FUNCTION lesiv.change_password
