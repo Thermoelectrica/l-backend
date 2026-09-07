@@ -57,6 +57,18 @@ def auth_service():
 
 
 @pytest.fixture
+def inspector_token(auth_service):
+    """Access token for inspector 1 (MODIFY) - the inspector who creates inspections/verifications"""
+    return auth_service.create_access_token(1, uuid4(), "MODIFY")
+
+
+@pytest.fixture
+def inspector_headers(inspector_token):
+    """Authorization headers for inspector 1"""
+    return {"Authorization": f"Bearer {inspector_token}"}
+
+
+@pytest.fixture
 def plant_id():
     return uuid4()
 
@@ -92,9 +104,9 @@ def inspection_data(plant_id, facility_id, equipment_id, inspection_id, step_id,
 
 
 @pytest.fixture
-def create_inspection_with_step(client: TestClient, inspection_data):
+def create_inspection_with_step(client: TestClient, inspection_data, inspector_headers):
     """Helper to create an inspection with a defect step"""
-    response = client.put("/inspection", json=inspection_data)
+    response = client.put("/inspection", json=inspection_data, headers=inspector_headers)
     assert response.status_code == 200
     return response.json()
 
@@ -109,9 +121,14 @@ def create_verification_request(step_id):
 
 
 @pytest.fixture
-def created_verification(client: TestClient, create_verification_request, create_inspection_with_step):
+def created_verification(
+    client: TestClient,
+    create_verification_request,
+    create_inspection_with_step,
+    inspector_headers,
+):
     """Create and return a verification"""
-    response = client.post("/verification", json=create_verification_request)
+    response = client.post("/verification", json=create_verification_request, headers=inspector_headers)
     assert response.status_code == 200
     return response.json()
 
@@ -121,39 +138,40 @@ def created_verification(client: TestClient, create_verification_request, create
 # ============================================================================
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_create_verification(
     client: TestClient,
     create_verification_request,
-    create_inspection_with_step,
+    inspector_headers,
 ):
     """Test creating a new verification for a DEFECT_REPORT step"""
-    response = client.post("/verification", json=create_verification_request)
+    response = client.post("/verification", json=create_verification_request, headers=inspector_headers)
     assert response.status_code == 200
 
     data = response.json()
     assert data["inspection_step_id"] == create_verification_request["inspection_step_id"]
     assert data["verifier_id"] == 5
-    assert data["inspector_id"] == 1  # anonymous user in tests has id=-1, but we use user 1 for create
+    assert data["inspector_id"] == 1  # inspector 1 (MODIFY) created the verification
     assert data["status"] == "SUBMITTED"
     assert data["step_type"] == "DEFECT_REPORT"
     assert len(data["events"]) == 1
     assert data["events"][0]["event_type"] == "SUBMITTED"
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_create_verification_copies_step_data(
     client: TestClient,
     create_verification_request,
-    create_inspection_with_step,
-    step_id,
+    inspector_headers,
 ):
     """Test that verification copies relevant fields from inspection step"""
-    response = client.post("/verification", json=create_verification_request)
+    response = client.post("/verification", json=create_verification_request, headers=inspector_headers)
     assert response.status_code == 200
 
     data = response.json()
     assert data["description"] == "Defect report step"
     assert data["is_resolved"] is False
-    assert data["epsilon"] == 0.95
+    assert data["epsilon"] == "0.95"  # Decimal serialized as string
     assert data["step_type"] == "DEFECT_REPORT"
 
 
@@ -199,46 +217,51 @@ def test_create_verification_rejects_nonexistent_step(
     assert "not found" in response.json()["detail"].lower()
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_create_verification_rejects_self_verification(
     client: TestClient,
-    create_inspection_with_step,
+    inspector_headers,
     step_id,
 ):
     """Test that inspector cannot assign themselves as verifier"""
     response = client.post(
         "/verification",
-        json={"inspection_step_id": str(step_id), "verifier_id": 1},  # User 1 is the creator
+        json={"inspection_step_id": str(step_id), "verifier_id": 1},  # Inspector 1 is the creator
+        headers=inspector_headers,
     )
     assert response.status_code == 403
     assert "self-verification" in response.json()["detail"].lower()
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_create_verification_rejects_non_verify_verifier(
     client: TestClient,
-    create_inspection_with_step,
+    inspector_headers,
     step_id,
 ):
     """Test that verifier must have VERIFY access level"""
     response = client.post(
         "/verification",
-        json={"inspection_step_id": str(step_id), "verifier_id": 1},  # User 1 has MODIFY, not VERIFY
+        json={"inspection_step_id": str(step_id), "verifier_id": 2},  # Inspector 2 has MODIFY, not VERIFY
+        headers=inspector_headers,
     )
-    # Should fail either with 403 (self-verify) or 400 (not VERIFY)
-    assert response.status_code in (400, 403)
+    assert response.status_code == 400
+    assert "verify" in response.json()["detail"].lower()
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_create_verification_rejects_duplicate_active(
     client: TestClient,
     create_verification_request,
-    create_inspection_with_step,
+    inspector_headers,
 ):
     """Test that only one active verification per step is allowed"""
     # Create first verification
-    response1 = client.post("/verification", json=create_verification_request)
+    response1 = client.post("/verification", json=create_verification_request, headers=inspector_headers)
     assert response1.status_code == 200
 
     # Try to create second verification for same step
-    response2 = client.post("/verification", json=create_verification_request)
+    response2 = client.post("/verification", json=create_verification_request, headers=inspector_headers)
     assert response2.status_code == 400
     assert "active verification" in response2.json()["detail"].lower()
 
@@ -278,9 +301,10 @@ def test_get_nonexistent_verification(client: TestClient):
 def test_submitted_by_me(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test listing verifications submitted by current user"""
-    response = client.get("/verification/submitted_by_me")
+    response = client.get("/verification/submitted_by_me", headers=inspector_headers)
     assert response.status_code == 200
 
     data = response.json()
@@ -320,13 +344,14 @@ def test_assigned_to_me_with_token(
 def test_update_verification_data(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test updating verification data fields"""
     verification = created_verification
     verification["description"] = "Updated description"
     verification["is_resolved"] = True
 
-    response = client.put("/verification", json=verification)
+    response = client.put("/verification", json=verification, headers=inspector_headers)
     assert response.status_code == 200
 
     data = response.json()
@@ -338,6 +363,7 @@ def test_update_verification_data(
 def test_update_verification_reassign_verifier(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test reassigning verifier via PUT"""
     verification = created_verification
@@ -346,7 +372,7 @@ def test_update_verification_reassign_verifier(
     # by changing to user 5 again (no change) — not ideal, skip this test for now
     # Instead, verify that changing verifier_id to invalid user fails
     verification["verifier_id"] = 9999  # Non-existent
-    response = client.put("/verification", json=verification)
+    response = client.put("/verification", json=verification, headers=inspector_headers)
     assert response.status_code == 400
     assert "verifier not found" in response.json()["detail"].lower()
 
@@ -354,6 +380,7 @@ def test_update_verification_reassign_verifier(
 def test_update_verification_optimistic_locking(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test that concurrent modification is detected"""
     verification = created_verification
@@ -361,19 +388,20 @@ def test_update_verification_optimistic_locking(
 
     # First update succeeds
     verification["description"] = "First update"
-    response1 = client.put("/verification", json=verification)
+    response1 = client.put("/verification", json=verification, headers=inspector_headers)
     assert response1.status_code == 200
 
     # Second update with stale server_modified_at should fail
     verification["server_modified_at"] = original_sma
     verification["description"] = "Second update"
-    response2 = client.put("/verification", json=verification)
+    response2 = client.put("/verification", json=verification, headers=inspector_headers)
     assert response2.status_code == 409
 
 
 def test_update_verification_force(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test force update bypasses server_modified_at check"""
     verification = created_verification
@@ -381,12 +409,12 @@ def test_update_verification_force(
 
     # First update
     verification["description"] = "First update"
-    client.put("/verification", json=verification)
+    client.put("/verification", json=verification, headers=inspector_headers)
 
     # Second update with stale server_modified_at but force=true
     verification["server_modified_at"] = original_sma
     verification["description"] = "Force update"
-    response = client.put("/verification?force=true", json=verification)
+    response = client.put("/verification?force=true", json=verification, headers=inspector_headers)
     assert response.status_code == 200
     assert response.json()["description"] == "Force update"
 
@@ -477,6 +505,7 @@ def test_review_stale_server_modified_at(
     client: TestClient,
     created_verification,
     auth_service,
+    inspector_headers,
 ):
     """Test that review with stale server_modified_at is rejected"""
     verification = created_verification
@@ -484,7 +513,7 @@ def test_review_stale_server_modified_at(
 
     # Modify verification to bump server_modified_at
     verification["description"] = "Modified"
-    update_response = client.put("/verification", json=verification)
+    update_response = client.put("/verification", json=verification, headers=inspector_headers)
     assert update_response.status_code == 200
 
     # Try to review with old server_modified_at
@@ -534,6 +563,7 @@ def test_resubmit_after_rejection(
     client: TestClient,
     created_verification,
     auth_service,
+    inspector_headers,
 ):
     """Test resubmitting a rejected verification"""
     verification = created_verification
@@ -555,7 +585,7 @@ def test_resubmit_after_rejection(
     assert reject_response.json()["status"] == "REJECTED"
 
     # Resubmit
-    resubmit_response = client.post(f"/verification/by_id/{verification['id']}/resubmit")
+    resubmit_response = client.post(f"/verification/by_id/{verification['id']}/resubmit", headers=inspector_headers)
     assert resubmit_response.status_code == 200
     assert resubmit_response.json()["status"] == "SUBMITTED"
 
@@ -563,11 +593,12 @@ def test_resubmit_after_rejection(
 def test_resubmit_only_when_rejected(
     client: TestClient,
     created_verification,
+    inspector_headers,
 ):
     """Test that resubmit fails when verification is not REJECTED"""
     verification = created_verification
 
-    response = client.post(f"/verification/by_id/{verification['id']}/resubmit")
+    response = client.post(f"/verification/by_id/{verification['id']}/resubmit", headers=inspector_headers)
     assert response.status_code == 400
     assert "rejected" in response.json()["detail"].lower()
 
@@ -611,6 +642,7 @@ def test_copy_back_on_approval(
     client: TestClient,
     created_verification,
     auth_service,
+    inspector_headers,
     step_id,
     inspection_id,
 ):
@@ -620,7 +652,7 @@ def test_copy_back_on_approval(
     # Modify verification data before approval
     verification["description"] = "Approved description"
     verification["is_resolved"] = True
-    update_response = client.put("/verification", json=verification)
+    update_response = client.put("/verification", json=verification, headers=inspector_headers)
     assert update_response.status_code == 200
     updated_sma = update_response.json()["server_modified_at"]
 
@@ -657,10 +689,10 @@ def test_copy_back_on_approval(
 # ============================================================================
 
 
+@pytest.mark.usefixtures("create_inspection_with_step")
 def test_full_cycle_submit_reject_fix_resubmit_approve(
     client: TestClient,
     create_verification_request,
-    create_inspection_with_step,
     auth_service,
     step_id,
     inspection_id,
@@ -726,27 +758,32 @@ def test_approved_verification_cannot_be_updated(
     client: TestClient,
     created_verification,
     auth_service,
+    inspector_headers,
 ):
     """Test that approved verification cannot be updated"""
     verification = created_verification
 
     # Approve it
     device_id = uuid4()
-    access_token = auth_service.create_access_token(5, device_id, "VERIFY")
+    reviewer_access_token = auth_service.create_access_token(5, device_id, "VERIFY")
     review_response = client.post(
         f"/verification/by_id/{verification['id']}/review",
         json={
             "approved": True,
             "server_modified_at": verification["server_modified_at"],
         },
-        headers={"Authorization": f"Bearer {access_token}"},
+        headers={"Authorization": f"Bearer {reviewer_access_token}"},
     )
     assert review_response.status_code == 200
     verification = review_response.json()
 
     # Try to update
     verification["description"] = "Should not work"
-    update_response = client.put("/verification", json=verification)
+    update_response = client.put(
+        "/verification",
+        json=verification,
+        headers=inspector_headers,
+    )
     assert update_response.status_code == 400
 
 

@@ -82,6 +82,13 @@ async def create_verification(
                     detail=f"Active verification already exists for this step (status: {active['status']})",
                 )
 
+            # Prevent self-verification
+            if request.verifier_id == current_user.id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot assign yourself as verifier (self-verification not allowed)",
+                )
+
             # Validate verifier
             verifier_data = await verification_repo.get_inspector_info(conn, inspector_id=request.verifier_id)
 
@@ -95,13 +102,6 @@ async def create_verification(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Verifier must have VERIFY access level, has {verifier_data['access_level']}",
-                )
-
-            # Prevent self-verification
-            if request.verifier_id == current_user.id:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Cannot assign yourself as verifier (self-verification not allowed)",
                 )
 
             # Get inspection step image links
