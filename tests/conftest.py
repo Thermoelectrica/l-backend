@@ -47,7 +47,7 @@ async def seed_test_data():
         print(f"Flyway migration output: {result.stdout}")
     except subprocess.CalledProcessError as e:
         # Выводим подробную ошибку для отладки
-        print(f"❌ Flyway migration failed with exit code {e.returncode}") # development
+        print(f"❌ Flyway migration failed with exit code {e.returncode}")  # development
         print(f"STDOUT: {e.stdout}")
         print(f"STDERR: {e.stderr}")
         raise

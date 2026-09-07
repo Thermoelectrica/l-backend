@@ -48,9 +48,7 @@ async def create_verification(
             permission_service.require_access_level(AccessLevel.INSPECT)
 
             # Get inspection step data
-            step_data = await verification_repo.get_inspection_step_data(
-                conn, step_id=request.inspection_step_id
-            )
+            step_data = await verification_repo.get_inspection_step_data(conn, step_id=request.inspection_step_id)
 
             if not step_data:
                 raise HTTPException(status_code=400, detail="Inspection step not found")
@@ -67,7 +65,7 @@ async def create_verification(
             ):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Verification only supported for DEFECT_REPORT and DEFECT_FOLLOW_UP steps, got {step_type}",
+                    detail="Verification only supported for DEFECT_REPORT and DEFECT_FOLLOW_UP steps, got {step_type}",
                 )
 
             # Check plant access
@@ -85,9 +83,7 @@ async def create_verification(
                 )
 
             # Validate verifier
-            verifier_data = await verification_repo.get_inspector_info(
-                conn, inspector_id=request.verifier_id
-            )
+            verifier_data = await verification_repo.get_inspector_info(conn, inspector_id=request.verifier_id)
 
             if not verifier_data:
                 raise HTTPException(status_code=400, detail="Verifier not found")
@@ -275,9 +271,7 @@ async def update_verification(
 
             # If verifier changed, validate new verifier
             if verification.verifier_id != current_verification.verifier_id:
-                verifier_data = await verification_repo.get_inspector_info(
-                    conn, inspector_id=verification.verifier_id
-                )
+                verifier_data = await verification_repo.get_inspector_info(conn, inspector_id=verification.verifier_id)
 
                 if not verifier_data:
                     raise HTTPException(status_code=400, detail="Verifier not found")
@@ -299,9 +293,7 @@ async def update_verification(
                     )
 
             # Update verification
-            result = await verification_repo.update(
-                conn, verification, current_verification, force=force
-            )
+            result = await verification_repo.update(conn, verification, current_verification, force=force)
             return result
 
     except ConcurrentModificationError as e:
@@ -357,9 +349,10 @@ async def review_verification(
 
             # Check status
             if current_verification.status != VerificationStatus.SUBMITTED:
+                status = current_verification.status.value
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Can only review SUBMITTED verifications, current status: {current_verification.status.value}",
+                    detail=f"Can only review SUBMITTED verifications, current status: {status}",
                 )
 
             # Validate comment for rejection
@@ -439,9 +432,10 @@ async def resubmit_verification(
 
             # Check status
             if current_verification.status != VerificationStatus.REJECTED:
+                status = current_verification.status.value
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Can only resubmit REJECTED verifications, current status: {current_verification.status.value}",
+                    detail=f"Can only resubmit REJECTED verifications, current status: {status}",
                 )
 
             # Update status back to SUBMITTED

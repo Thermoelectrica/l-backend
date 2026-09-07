@@ -19,7 +19,7 @@ def fresh_sticker():
         "sticker_type_id": 0,
         "sticker_color": "YELLOW",
         "count": 0,
-        "installed_at": "2026-07-24T15:42:47.246Z"
+        "installed_at": "2026-07-24T15:42:47.246Z",
     }
 
 
@@ -72,9 +72,7 @@ async def test_get_sticker_by_id_success(
 
 
 @pytest.mark.asyncio
-async def test_get_sticker_by_id_not_found(
-    sticker_client: AsyncClient
-):
+async def test_get_sticker_by_id_not_found(sticker_client: AsyncClient):
     """
     Тест проверяет, что запрос к несуществующему ID возвращает 404.
     """
@@ -158,15 +156,9 @@ async def test_upsert_sticker_create_success(
     conn = await asyncpg.connect(settings.get_database_url())
     try:
         # Проверяем, что запись появилась в БД (после PUT запроса)
-        row = await conn.fetchrow(
-            "SELECT * FROM lesiv.sticker_installation WHERE id = $1",
-            id_sticker
-        )
+        row = await conn.fetchrow("SELECT * FROM lesiv.sticker_installation WHERE id = $1", id_sticker)
         assert row is not None, "Sticker should exist in DB"
-        await conn.execute(
-            "DELETE FROM lesiv.sticker_installation WHERE id = $1",
-            id_sticker
-        )
+        await conn.execute("DELETE FROM lesiv.sticker_installation WHERE id = $1", id_sticker)
     finally:
         await conn.close()
 
@@ -210,14 +202,8 @@ async def test_upsert_sticker_conflict_409(
     conn = await asyncpg.connect(settings.get_database_url())
     try:
         # Проверяем, что запись появилась в БД (после PUT запроса)
-        row = await conn.fetchrow(
-            "SELECT * FROM lesiv.sticker_installation WHERE id = $1",
-            fresh_sticker["id"]
-        )
+        row = await conn.fetchrow("SELECT * FROM lesiv.sticker_installation WHERE id = $1", fresh_sticker["id"])
         assert row is not None, "Sticker should exist in DB"
-        await conn.execute(
-            "DELETE FROM lesiv.sticker_installation WHERE id = $1",
-            fresh_sticker["id"]
-        )
+        await conn.execute("DELETE FROM lesiv.sticker_installation WHERE id = $1", fresh_sticker["id"])
     finally:
         await conn.close()

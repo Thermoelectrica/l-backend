@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from app.services.auth import AuthService
 
-
 # ============================================================================
 # Templates
 # ============================================================================
@@ -717,9 +716,7 @@ def test_full_cycle_submit_reject_fix_resubmit_approve(
 
     # 6. Verify copy-back
     inspection_response = client.get(f"/inspection/by_id/{inspection_id}")
-    step = next(
-        (s for s in inspection_response.json()["steps"] if s["id"] == str(step_id)), None
-    )
+    step = next((s for s in inspection_response.json()["steps"] if s["id"] == str(step_id)), None)
     assert step is not None
     assert step["description"] == "Fixed description"
     assert step["verified_by"] == 5

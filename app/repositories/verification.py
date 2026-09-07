@@ -11,7 +11,6 @@ from app.config import settings
 from app.constants import DEFAULT_MODIFIED_SINCE
 from app.exceptions import ConcurrentModificationError
 from app.models import ConflictDetail, ConflictError
-from app.models.inspector import AccessLevel
 from app.models.verification import (
     Verification,
     VerificationEvent,
@@ -77,9 +76,7 @@ class VerificationRepository:
         image_link_rows = [
             row async for row in queries.get_verification_image_links(conn, verification_id=verification_id)
         ]
-        event_rows = [
-            row async for row in queries.get_verification_events(conn, verification_id=verification_id)
-        ]
+        event_rows = [row async for row in queries.get_verification_events(conn, verification_id=verification_id)]
 
         return self._build_verification_aggregate(verification_row, image_link_rows, event_rows)
 
@@ -97,18 +94,12 @@ class VerificationRepository:
         verifications = []
         for verification_row in verification_rows:
             image_link_rows = [
-                row async for row in queries.get_verification_image_links(
-                    conn, verification_id=verification_row["id"]
-                )
+                row async for row in queries.get_verification_image_links(conn, verification_id=verification_row["id"])
             ]
             event_rows = [
-                row async for row in queries.get_verification_events(
-                    conn, verification_id=verification_row["id"]
-                )
+                row async for row in queries.get_verification_events(conn, verification_id=verification_row["id"])
             ]
-            verifications.append(
-                self._build_verification_aggregate(verification_row, image_link_rows, event_rows)
-            )
+            verifications.append(self._build_verification_aggregate(verification_row, image_link_rows, event_rows))
 
         return VerificationListResponse(items=verifications)
 
@@ -126,18 +117,12 @@ class VerificationRepository:
         verifications = []
         for verification_row in verification_rows:
             image_link_rows = [
-                row async for row in queries.get_verification_image_links(
-                    conn, verification_id=verification_row["id"]
-                )
+                row async for row in queries.get_verification_image_links(conn, verification_id=verification_row["id"])
             ]
             event_rows = [
-                row async for row in queries.get_verification_events(
-                    conn, verification_id=verification_row["id"]
-                )
+                row async for row in queries.get_verification_events(conn, verification_id=verification_row["id"])
             ]
-            verifications.append(
-                self._build_verification_aggregate(verification_row, image_link_rows, event_rows)
-            )
+            verifications.append(self._build_verification_aggregate(verification_row, image_link_rows, event_rows))
 
         return VerificationListResponse(items=verifications)
 
@@ -392,9 +377,7 @@ class VerificationRepository:
             raise ValueError(f"Verification {verification_id} not found")
 
         # Check server_modified_at
-        if truncate_to_milliseconds(server_modified_at) != truncate_to_milliseconds(
-            current.server_modified_at
-        ):
+        if truncate_to_milliseconds(server_modified_at) != truncate_to_milliseconds(current.server_modified_at):
             raise ConcurrentModificationError(
                 ConflictError(
                     message="Verification was modified since last read",
@@ -412,9 +395,7 @@ class VerificationRepository:
             )
 
         # Update status
-        await queries.update_verification_status(
-            conn, id=verification_id, status=new_status.value
-        )
+        await queries.update_verification_status(conn, id=verification_id, status=new_status.value)
 
         # Bump server_modified_at
         new_server_modified_at = datetime.now(timezone.utc)
@@ -443,9 +424,7 @@ class VerificationRepository:
             raise ValueError(f"Verification {verification_id} not found after status update")
         return result
 
-    async def copy_back_to_inspection_step(
-        self, conn, verification: Verification, verified_at: datetime
-    ) -> None:
+    async def copy_back_to_inspection_step(self, conn, verification: Verification, verified_at: datetime) -> None:
         """
         Copy approved verification data back to the original inspection step.
         Must be called within transaction.
