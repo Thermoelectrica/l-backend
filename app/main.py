@@ -33,6 +33,7 @@ from app.routers import (
     plant_group,
     sticker_installation,
     sticker_type,
+    verification,
     work_log,
 )
 
@@ -157,3 +158,4 @@ app.include_router(defect.router)
 app.include_router(work_log.router)
 app.include_router(plant_group.router)
 app.include_router(sticker_installation.router)
+app.include_router(verification.router)

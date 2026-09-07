@@ -47,7 +47,7 @@ async def seed_test_data():
         print(f"Flyway migration output: {result.stdout}")
     except subprocess.CalledProcessError as e:
         # Выводим подробную ошибку для отладки
-        print(f"❌ Flyway migration failed with exit code {e.returncode}") # development
+        print(f"❌ Flyway migration failed with exit code {e.returncode}")  # development
         print(f"STDOUT: {e.stdout}")
         print(f"STDERR: {e.stderr}")
         raise
@@ -106,7 +106,7 @@ async def seed_test_plant_and_facility(request):
                 INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
                 SELECT id, $1
                 FROM lesiv.inspector
-                WHERE id IN (1, 2, 3)
+                WHERE id IN (1, 2, 3, 5)
                 ON CONFLICT (inspector_id, plant_id) DO NOTHING
             """,
                 plant_id,
@@ -161,7 +161,7 @@ async def seed_test_equipment(request):
                 INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id)
                 SELECT id, $1
                 FROM lesiv.inspector
-                WHERE id IN (1, 2, 3)
+                WHERE id IN (1, 2, 3, 5)
                 ON CONFLICT (inspector_id, plant_id) DO NOTHING
             """,
                 plant_id,

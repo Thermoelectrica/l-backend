@@ -1,4 +1,4 @@
-"""Inspection aggregate models"""
+"""Verification aggregate models"""
 
 from datetime import datetime
 from decimal import Decimal
@@ -9,47 +9,57 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class InspectionStatus(str, Enum):
-    """Inspection status enum"""
+class VerificationStatus(str, Enum):
+    """Verification status enum"""
 
-    PLANNED = "PLANNED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-
-
-class InspectionStepType(str, Enum):
-    """Inspection step type enum"""
-
-    GENERAL_INSPECTION = "GENERAL_INSPECTION"
-    DEFECT_REPORT = "DEFECT_REPORT"
-    DEFECT_FOLLOW_UP = "DEFECT_FOLLOW_UP"
-    DEFECT_UNDECIDED = "DEFECT_UNDECIDED"
+    SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
-class StepStatus(str, Enum):
-    """Step status enum"""
+class VerificationEventType(str, Enum):
+    """Verification event type enum"""
 
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    FORCE_COMPLETED = "FORCE_COMPLETED"
+    SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    REASSIGNED = "REASSIGNED"
 
 
-class ImageLink(BaseModel):
-    """Image link within inspection step (child entity)"""
+class VerificationImageLink(BaseModel):
+    """Image link within verification (child entity)"""
 
     image_id: UUID
     is_deleted: bool = False
 
 
-class InspectionStep(BaseModel):
-    """Inspection step within inspection (child entity)"""
+class VerificationEvent(BaseModel):
+    """Verification event (append-only log entry)"""
+
+    id: UUID
+    verification_id: UUID
+    event_type: VerificationEventType
+    inspector_id: int
+    comment: Optional[str] = None
+    created_at: datetime
+
+
+class Verification(BaseModel):
+    """Verification aggregate root"""
 
     model_config = ConfigDict(extra="ignore")
 
     id: UUID
-    started_at: datetime
-    step_number: int
-    step_type: InspectionStepType
+    inspection_step_id: UUID
+    plant_id: UUID
+    inspector_id: int
+    verifier_id: int
+    status: VerificationStatus
+    server_modified_at: datetime
+    is_deleted: bool = False
+
+    # Copied fields from InspectionStep
+    step_type: str  # InspectionStepType value
     defect_id: Optional[UUID] = None
     unit_name: Optional[str] = None
     description: Optional[str] = None
@@ -66,11 +76,10 @@ class InspectionStep(BaseModel):
     is_sticker_present: Optional[bool] = None
     is_test_ready: Optional[bool] = None
     is_attention_required: bool = False
-    verified_by: Optional[int] = None
-    verified_at: Optional[datetime] = None
-    step_status: Optional[StepStatus] = None
-    is_deleted: bool = False
-    image_links: list[ImageLink] = Field(default_factory=list)
+
+    # Child entities
+    image_links: list[VerificationImageLink] = Field(default_factory=list)
+    events: list[VerificationEvent] = Field(default_factory=list)
 
     @field_validator("t_observed")
     @classmethod
@@ -108,33 +117,22 @@ class InspectionStep(BaseModel):
         return v
 
 
-class Inspection(BaseModel):
-    """Inspection aggregate root"""
+class VerificationListResponse(BaseModel):
+    """Wrapped response for verification list with items key"""
 
-    id: UUID
-    equipment_id: UUID
-    inspector_id: int
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    status: InspectionStatus = InspectionStatus.PLANNED
-    is_deleted: bool = False
+    items: list[Verification]
+
+
+class CreateVerificationRequest(BaseModel):
+    """Request body for creating a verification"""
+
+    inspection_step_id: UUID
+    verifier_id: int
+
+
+class ReviewVerificationRequest(BaseModel):
+    """Request body for reviewing (approve/reject) a verification"""
+
+    approved: bool
     server_modified_at: datetime
-    steps: list[InspectionStep] = Field(default_factory=list)
-
-
-class InspectionListItem(BaseModel):
-    """Lightweight inspection item for list view"""
-
-    id: UUID
-    equipment_id: UUID
-    inspector_id: int
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    status: InspectionStatus
-    is_deleted: bool
-
-
-class InspectionListResponse(BaseModel):
-    """Wrapped response for inspection list with items key"""
-
-    items: list[InspectionListItem]
+    comment: Optional[str] = None
