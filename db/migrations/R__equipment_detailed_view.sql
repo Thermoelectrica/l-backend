@@ -8,6 +8,16 @@
 -- 6) Sum of control point and sticker count
 -- 7) Number of active and resolved defects
 
+-- Drop before recreating (PostgreSQL doesn't allow changing the shape of the select list in
+-- CREATE OR REPLACE VIEW: columns may only be appended at the end, never renamed, reordered
+-- or retyped). Without the drop, every new equipment column would have to pile up at the tail
+-- of the view in the order it happened to be added, instead of next to the columns it belongs
+-- with. Flyway runs each migration in a transaction, so the view is never missing.
+--
+-- Dropping discards the view's GRANTs, so R__permissions.sql must re-run in the same Flyway
+-- invocation to restore them - see the note next to the grant there.
+DROP VIEW IF EXISTS lesiv.equipment_detailed_view;
+
 CREATE OR REPLACE VIEW lesiv.equipment_detailed_view AS
 WITH RECURSIVE equipment_path AS (
     -- Base case: equipment without parent
@@ -78,6 +88,7 @@ SELECT
     e.parent_id,
     e.name,
     e.qr_code,
+    e.tag_code,
     e.is_container,
     e.equipment_type_id,
     e.facility_template_equipment_id,
@@ -112,7 +123,7 @@ SELECT
     COALESCE(ds.active_defect_count, 0) AS active_defect_count,
     COALESCE(ds.resolved_defect_count, 0) AS resolved_defect_count,
     COALESCE(ds.active_defect_count, 0) + COALESCE(ds.resolved_defect_count, 0) AS total_defect_count
-    
+
 FROM lesiv.equipment e
     LEFT JOIN equipment_path ep ON e.id = ep.id
     INNER JOIN lesiv.facility f ON e.facility_id = f.id

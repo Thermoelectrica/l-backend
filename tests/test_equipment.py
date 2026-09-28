@@ -12,6 +12,7 @@ PUT_BODY_TEMPLATE = {
     "equipment_type_id": None,
     "estimated_point_count": 50,
     "qr_code": None,
+    "tag_code": None,
     "server_modified_at": "2024-01-01T10:00:00Z",
     "control_points": [
         {
@@ -125,6 +126,33 @@ def test_update_equipment(client: TestClient, equipment_data):
     assert data["control_points"][0]["point_count"] == 15
     assert data["control_points"][0]["is_deleted"]
     assert len(data["defects"]) == 0  # Always empty
+
+
+def test_tag_code_round_trip(client: TestClient, equipment_data, equipment_id, plant_id):
+    """Test that tag_code (NFC tag serial) set by the mobile app is persisted and returned"""
+    nfc_serial = "04:A2:24:B1:5F:6E:80"
+
+    create_response = client.put("/equipment", json=equipment_data)
+    assert create_response.status_code == 200
+    assert create_response.json()["tag_code"] is None
+
+    # Set the tag on an already existing equipment - covers ON CONFLICT DO UPDATE SET
+    equipment_data["server_modified_at"] = create_response.json()["server_modified_at"]
+    equipment_data["tag_code"] = nfc_serial
+
+    update_response = client.put("/equipment", json=equipment_data)
+    assert update_response.status_code == 200
+    assert update_response.json()["tag_code"] == nfc_serial
+
+    # Both read paths have their own SELECT list, so check them separately
+    get_response = client.get(f"/equipment/by_id/{equipment_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["tag_code"] == nfc_serial
+
+    by_plant_response = client.get(f"/equipment/by_plant_id/{plant_id}")
+    assert by_plant_response.status_code == 200
+    our_equipment = next(e for e in by_plant_response.json() if e["id"] == str(equipment_id))
+    assert our_equipment["tag_code"] == nfc_serial
 
 
 def test_sync_control_points_add_new(client: TestClient, equipment_data):
