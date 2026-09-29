@@ -226,6 +226,7 @@ class EquipmentRepository:
             parent_id=equipment.parent_id,
             name=equipment.name,
             qr_code=equipment.qr_code,
+            tag_code=equipment.tag_code,
             is_container=equipment.is_container,
             equipment_type_id=equipment.equipment_type_id,
             facility_template_equipment_id=equipment.facility_template_equipment_id,

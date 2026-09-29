@@ -51,6 +51,7 @@ class Equipment(BaseModel):
     parent_id: Optional[UUID] = None
     name: str
     qr_code: Optional[str] = None
+    tag_code: Optional[str] = None
     is_container: bool = False
     equipment_type_id: Optional[int] = None
     facility_template_equipment_id: Optional[int] = None
