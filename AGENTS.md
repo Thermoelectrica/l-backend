@@ -252,6 +252,7 @@ PostgreSQL (схема lesiv)
   - Facility = энергообъект. Это здание на электростанции
   - Equipment с is_container=True это "папка"
   - Inspection = осмотр
+  - Express inspection = экспресс-осмотр, облегчённая процедура осмотра (флаг `inspection.is_express`)
   - Sticker = термоиндикаторная наклейка или просто ТИН
 
 ---
