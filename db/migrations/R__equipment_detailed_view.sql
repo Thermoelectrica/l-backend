@@ -5,8 +5,9 @@
 -- 3) Facility name
 -- 4) Plant name and id
 -- 5) Last inspection date and inspector full name
--- 6) Sum of control point and sticker count
--- 7) Number of active and resolved defects
+-- 6) Next inspection date (from the equipment_properties aggregate)
+-- 7) Sum of control point and sticker count
+-- 8) Number of active and resolved defects
 
 -- Drop before recreating (PostgreSQL doesn't allow changing the shape of the select list in
 -- CREATE OR REPLACE VIEW: columns may only be appended at the end, never renamed, reordered
@@ -114,7 +115,10 @@ SELECT
     -- Last inspection information
     li.last_inspection_date,
     li.last_inspector_name,
-    
+
+    -- Next inspection date, from the equipment_properties aggregate (0..1 rows per equipment)
+    eprop.next_inspection_date,
+
     -- Control point and sticker summary
     COALESCE(cps.total_point_count, 0) AS total_point_count,
     COALESCE(ss.total_sticker_count, 0) AS total_sticker_count,
@@ -130,6 +134,7 @@ FROM lesiv.equipment e
     INNER JOIN lesiv.plant p ON f.plant_id = p.id
     LEFT JOIN lesiv.equipment_type et ON e.equipment_type_id = et.id
     LEFT JOIN last_inspection li ON e.id = li.equipment_id
+    LEFT JOIN lesiv.equipment_properties eprop ON e.id = eprop.equipment_id
     LEFT JOIN control_point_summary cps ON e.id = cps.equipment_id
     LEFT JOIN sticker_summary ss ON e.id = ss.equipment_id
     LEFT JOIN defect_summary ds ON e.id = ds.equipment_id;
