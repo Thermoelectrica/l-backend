@@ -37,10 +37,21 @@ def equipment_id():
 
 
 @pytest.fixture
-def equipment_properties_data(equipment_id, seed_test_equipment):
+def seeded_equipment(plant_id, facility_id, equipment_id, seed_test_equipment):
+    """Equipment (plus its plant and facility) seeded directly in the DB.
+
+    seed_test_equipment inspects request.fixturenames and only does its work when plant_id,
+    facility_id *and* equipment_id are all in the test's fixture closure - otherwise it silently
+    seeds nothing. This fixture exists to pull all three in, so tests only have to ask for it.
+    """
+    return equipment_id
+
+
+@pytest.fixture
+def equipment_properties_data(seeded_equipment):
     """Minimal valid PUT body, for equipment seeded directly in the DB."""
     data = deepcopy(PUT_BODY_TEMPLATE)
-    data["equipment_id"] = str(equipment_id)
+    data["equipment_id"] = str(seeded_equipment)
     return data
 
 
@@ -108,13 +119,13 @@ def test_clear_next_inspection_date(client: TestClient, equipment_properties_dat
 # ============================================================================
 
 
-def test_get_returns_defaults_when_no_properties_row(client: TestClient, equipment_id, seed_test_equipment):
+def test_get_returns_defaults_when_no_properties_row(client: TestClient, seeded_equipment):
     """Equipment with no properties row yields an all-default object, not a 404"""
-    response = client.get(f"/equipment-properties/by_id/{equipment_id}")
+    response = client.get(f"/equipment-properties/by_id/{seeded_equipment}")
     assert response.status_code == 200
 
     data = response.json()
-    assert data["equipment_id"] == str(equipment_id)
+    assert data["equipment_id"] == str(seeded_equipment)
     assert data["next_inspection_date"] is None
     assert data["server_modified_at"] is None
 
@@ -123,6 +134,30 @@ def test_get_unknown_equipment_returns_404(client: TestClient):
     """A 404 means the equipment itself is unknown"""
     response = client.get(f"/equipment-properties/by_id/{uuid4()}")
     assert response.status_code == 404
+
+
+def test_write_accepted_before_equipment_is_synced(client: TestClient):
+    """Properties may be written for equipment the server has not seen yet.
+
+    The offline client may push the two aggregates in either order, so the router skips the plant
+    access check when the equipment cannot be resolved (same as PUT /equipment and PUT /defect).
+    The row stays invisible to /all and /by_plant_id until the equipment itself arrives, because
+    both resolve the plant through it.
+    """
+    orphan_id = uuid4()
+    response = client.put(
+        "/equipment-properties",
+        json={"equipment_id": str(orphan_id), "next_inspection_date": "2026-06-01", "server_modified_at": None},
+    )
+    assert response.status_code == 200
+    assert response.json()["next_inspection_date"] == "2026-06-01"
+
+    # Not readable yet: by_id resolves the plant through the equipment, which does not exist
+    assert client.get(f"/equipment-properties/by_id/{orphan_id}").status_code == 404
+
+    # ...and the same reason keeps it out of /all
+    body = client.get("/equipment-properties/all").json()
+    assert next((x for x in body["items"] if x["equipment_id"] == str(orphan_id)), None) is None
 
 
 # ============================================================================
