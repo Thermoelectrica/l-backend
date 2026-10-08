@@ -89,7 +89,9 @@ def generate() -> None:
     lines.append("")  # trailing newline
 
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text("\n".join(lines))
+    # encoding is explicit: the header comment contains an em dash, which a default-encoding
+    # write mangles on Windows (cp1251) and would land as noise in the next diff.
+    OUT_FILE.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(f"Written {len(queries.available_queries)} query stubs to {OUT_FILE}")
 
 
