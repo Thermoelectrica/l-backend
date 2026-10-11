@@ -1,0 +1,46 @@
+# systemd unit for the L-Inspector backend on a plain VM.
+# Installed to /etc/systemd/system/ by deploy/setup_vm.sh.
+# Prefer a drop-in (systemctl edit l-inspector-backend) over editing the
+# installed copy — see deploy/README.md.
+
+[Unit]
+Description=L-Inspector Backend API (uvicorn)
+Documentation=https://github.com/Thermoelectrica/l-backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=l-inspector
+Group=l-inspector
+WorkingDirectory=/opt/l-inspector-backend
+
+# All application settings (DATABASE_URL, S3_*, RSA keys, ...) live here.
+# The application (pydantic-settings) reads the same file itself, so there is
+# a single source of truth. Restart the service after editing it.
+EnvironmentFile=/opt/l-inspector-backend/.env
+
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/l-inspector-backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
+
+# If PostgreSQL/S3 are unreachable, the process exits during startup and is
+# retried every 5 seconds until the backend becomes reachable again.
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Sandbox: the app needs only read access to its own directory and outbound
+# network to PostgreSQL and S3.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
