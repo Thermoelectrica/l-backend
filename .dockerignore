@@ -43,6 +43,9 @@ README.md
 # Scripts
 scripts/
 
+# VM deployment artifacts (not needed in the container image)
+deploy/
+
 # Database migrations (if running separately)
 db/
 
