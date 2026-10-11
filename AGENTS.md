@@ -226,6 +226,7 @@ PostgreSQL (схема lesiv)
   2. **Serverless**: `app/serverless.py` через Mangum (lifespan отключён, пул инициализируется при первом запросе).
 - В serverless-режиме используется `psycopg2` с `ThreadedConnectionPool` (меньше соединений, синхронный драйвер).
 - `AsyncWrapper` и `AsyncConnectionWrapper` обеспечивают совместимость синхронного psycopg2 с async-кодом FastAPI.
+- Деплой на обычную VM — через systemd: артефакты в `deploy/` (юнит-файл `l-inspector-backend.service` и идемпотентный скрипт установки `deploy/setup_vm.sh`, запускать от root из чекаута репозитория). Приложение ставится в `/opt/l-inspector-backend`, работает от системного пользователя `l-inspector` под uvicorn (порт 8080), конфигурация — в `/opt/l-inspector-backend/.env`; скрипт существующий `.env` не перезаписывает. Миграции БД скрипт не запускает — ими управляет CI (`deploy.yml`).
 
 ---
 
