@@ -66,6 +66,8 @@ class InspectionStep(BaseModel):
     is_sticker_present: Optional[bool] = None
     is_test_ready: Optional[bool] = None
     is_attention_required: bool = False
+    verified_by: Optional[int] = None
+    verified_at: Optional[datetime] = None
     step_status: Optional[StepStatus] = None
     is_deleted: bool = False
     image_links: list[ImageLink] = Field(default_factory=list)
