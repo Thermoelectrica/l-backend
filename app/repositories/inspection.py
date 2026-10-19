@@ -215,6 +215,7 @@ class InspectionRepository:
             completed_at=inspection.completed_at,
             status=inspection.status.value,
             is_deleted=inspection.is_deleted,
+            is_express=inspection.is_express,
             server_modified_at=new_server_modified_at,
         )
 

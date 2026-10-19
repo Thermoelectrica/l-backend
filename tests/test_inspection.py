@@ -11,6 +11,7 @@ PUT_BODY_TEMPLATE = {
     "started_at": "2024-01-01T10:00:00Z",
     "completed_at": None,
     "status": "IN_PROGRESS",
+    "is_express": False,
     "server_modified_at": "2024-01-01T10:00:00Z",
     "steps": [
         {
@@ -131,6 +132,49 @@ def test_update_inspection(client: TestClient, inspection_data):
     assert data["status"] == "COMPLETED"
     assert data["completed_at"] is not None
     assert data["steps"][0]["description"] == "Updated description"
+
+
+def test_is_express_round_trip(client: TestClient, inspection_data, inspection_id, plant_id):
+    """Test that is_express set by the mobile app is persisted and returned by every read path"""
+    create_response = client.put("/inspection", json=inspection_data)
+    assert create_response.status_code == 200
+    assert create_response.json()["is_express"] is False
+
+    # Flip the flag on an already existing inspection - covers ON CONFLICT DO UPDATE SET
+    inspection_data["server_modified_at"] = create_response.json()["server_modified_at"]
+    inspection_data["is_express"] = True
+
+    update_response = client.put("/inspection", json=inspection_data)
+    assert update_response.status_code == 200
+    assert update_response.json()["is_express"] is True
+
+    # All three read paths have their own SELECT list, so check them separately
+    get_response = client.get(f"/inspection/by_id/{inspection_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["is_express"] is True
+
+    by_plant_response = client.get(f"/inspection/by_plant_id/{plant_id}")
+    assert by_plant_response.status_code == 200
+    our_inspection = next(i for i in by_plant_response.json() if i["id"] == str(inspection_id))
+    assert our_inspection["is_express"] is True
+
+    all_response = client.get("/inspection/all")
+    assert all_response.status_code == 200
+    our_item = next(i for i in all_response.json()["items"] if i["id"] == str(inspection_id))
+    assert our_item["is_express"] is True
+
+
+def test_is_express_defaults_when_omitted(client: TestClient, inspection_data, inspection_id):
+    """Test that a PUT body without is_express stores FALSE - mobile builds predating the field"""
+    del inspection_data["is_express"]
+
+    response = client.put("/inspection", json=inspection_data)
+    assert response.status_code == 200
+    assert response.json()["is_express"] is False
+
+    get_response = client.get(f"/inspection/by_id/{inspection_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["is_express"] is False
 
 
 def test_sync_steps_add_new(client: TestClient, inspection_data):

@@ -116,6 +116,7 @@ class Inspection(BaseModel):
     completed_at: Optional[datetime] = None
     status: InspectionStatus = InspectionStatus.PLANNED
     is_deleted: bool = False
+    is_express: bool = False
     server_modified_at: datetime
     steps: list[InspectionStep] = Field(default_factory=list)
 
@@ -130,6 +131,7 @@ class InspectionListItem(BaseModel):
     completed_at: Optional[datetime] = None
     status: InspectionStatus
     is_deleted: bool
+    is_express: bool
 
 
 class InspectionListResponse(BaseModel):

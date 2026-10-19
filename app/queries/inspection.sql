@@ -1,7 +1,7 @@
 -- name: get_all_inspections(modified_since)
 -- Get all inspections (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return inspections modified after that timestamp
-SELECT id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted
+SELECT id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted, is_express
 FROM lesiv.inspection
 WHERE server_modified_at > :modified_since
 ORDER BY server_modified_at;
@@ -9,7 +9,8 @@ ORDER BY server_modified_at;
 -- name: get_by_plant_id(plant_id, modified_since)
 -- Get all inspections for plant (full data for aggregates)
 -- :modified_since defaults to 1790-01-01 - only return inspections modified after that timestamp
-SELECT i.id, i.equipment_id, i.inspector_id, i.started_at, i.completed_at, i.status, i.is_deleted, i.server_modified_at
+SELECT i.id, i.equipment_id, i.inspector_id, i.started_at, i.completed_at, i.status, i.is_deleted, i.is_express,
+       i.server_modified_at
 FROM lesiv.inspection i
 JOIN lesiv.equipment e ON i.equipment_id = e.id
 JOIN lesiv.facility f ON e.facility_id = f.id
@@ -44,14 +45,14 @@ ORDER BY il.inspection_step_id;
 
 -- name: get_by_id(id)^
 -- Get inspection by ID
-SELECT id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted, server_modified_at
+SELECT id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted, is_express, server_modified_at
 FROM lesiv.inspection
 WHERE id = :id;
 
 -- name: get_by_id_with_username(id)^
 -- Get inspection by ID with username of inspector who created it
-SELECT i.id, i.equipment_id, i.inspector_id, i.started_at, i.completed_at, i.status, i.is_deleted, i.server_modified_at,
-       insp.username as inspector_username
+SELECT i.id, i.equipment_id, i.inspector_id, i.started_at, i.completed_at, i.status, i.is_deleted, i.is_express,
+       i.server_modified_at, insp.username as inspector_username
 FROM lesiv.inspection i
 LEFT JOIN lesiv.inspector insp ON i.inspector_id = insp.id
 WHERE i.id = :id;
@@ -92,12 +93,12 @@ SELECT image_id, is_deleted
 FROM lesiv.inspection_image_link
 WHERE inspection_step_id = :inspection_step_id;
 
--- name: upsert_inspection(id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted, server_modified_at)!
+-- name: upsert_inspection(id, equipment_id, inspector_id, started_at, completed_at, status, is_deleted, is_express, server_modified_at)!
 -- Insert or update inspection
 INSERT INTO lesiv.inspection (id, equipment_id, inspector_id, started_at, completed_at,
-                               status, is_deleted, server_modified_at)
+                               status, is_deleted, is_express, server_modified_at)
 VALUES (:id, :equipment_id, :inspector_id, :started_at, :completed_at,
-        :status, :is_deleted, :server_modified_at)
+        :status, :is_deleted, :is_express, :server_modified_at)
 ON CONFLICT (id) DO UPDATE SET
     equipment_id = EXCLUDED.equipment_id,
     inspector_id = EXCLUDED.inspector_id,
@@ -105,6 +106,7 @@ ON CONFLICT (id) DO UPDATE SET
     completed_at = EXCLUDED.completed_at,
     status = EXCLUDED.status,
     is_deleted = EXCLUDED.is_deleted,
+    is_express = EXCLUDED.is_express,
     server_modified_at = EXCLUDED.server_modified_at;
 
 -- name: upsert_step(id, started_at, inspection_id, step_number, step_type, defect_id, unit_name, description, is_resolved, sticker_type_id, t_sticker, t_environment, t_similar_unit, epsilon, t_observed, measured_current, nominal_current, defect_type_id, is_sticker_present, is_test_ready, is_attention_required, step_status, is_deleted)!
