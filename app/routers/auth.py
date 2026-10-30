@@ -65,8 +65,9 @@ async def refresh(
 
     Implements:
     - Token rotation: old token is revoked, new token is issued
-    - Theft detection: if revoked token is reused, entire chain is revoked
-    - Grace window: allows token reuse within a small time window for race conditions
+    - Recovery: retries within REUSE_LIFETIME_MIN return the usable replacement
+      without rotating again or extending the original recovery window (default: 5 minutes)
+    - Theft detection: reuse after the recovery window revokes the entire chain
 
     Args:
         request: Refresh token request
@@ -78,8 +79,10 @@ async def refresh(
     Raises:
         HTTPException: 401 if refresh token is invalid, expired, or revoked
     """
-    result = await auth_service.refresh(conn, refresh_token_string=request.refresh_token)
+    async with conn.transaction():
+        result = await auth_service.refresh(conn, refresh_token_string=request.refresh_token)
 
+    # Commit intentional theft-detection revocation before returning a 401.
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

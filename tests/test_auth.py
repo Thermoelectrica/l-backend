@@ -5,8 +5,10 @@ from uuid import uuid4
 import asyncpg
 import pytest
 import pytest_asyncio
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.config import settings
+from app.repositories.auth import AuthRepository
 from app.services.auth import AuthService
 
 
@@ -71,6 +73,44 @@ async def test_inspector(test_inspector_data):
         await conn.execute("DELETE FROM lesiv.inspector WHERE id = $1", inspector_id)
     finally:
         await conn.close()
+
+
+@pytest_asyncio.fixture
+async def auth_db():
+    """Provide a separate connection for inspecting committed authentication state."""
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@pytest.fixture
+def refresh_retry_window():
+    """Keep recovery tests independent of external configuration."""
+    original = settings.reuse_lifetime_min
+    settings.reuse_lifetime_min = 5
+    try:
+        yield
+    finally:
+        settings.reuse_lifetime_min = original
+
+
+@pytest.fixture
+def refresh_session(client, test_inspector, refresh_retry_window):
+    """Create a session and rotate it once, as if the response could be lost."""
+    login = client.post(
+        "/auth/login",
+        json={
+            "username": test_inspector["username"],
+            "password": test_inspector["password"],
+            "device_id": str(uuid4()),
+        },
+    )
+    assert login.status_code == 200
+    rotated = client.post("/auth/refresh", json={"refresh_token": login.json()["refresh_token"]})
+    assert rotated.status_code == 200
+    return login.json(), rotated.json()
 
 
 def test_login_success(client, test_inspector):
@@ -174,32 +214,207 @@ def test_refresh_token_invalid(client):
     assert "Invalid or expired refresh token" in response.json()["detail"]
 
 
-def test_refresh_token_reuse_detection(client, test_inspector):
-    """Test that reusing a revoked refresh token revokes the chain"""
-    device_id = str(uuid4())
+async def test_refresh_token_reuse_detection(client, refresh_session, auth_db):
+    """Reuse after the fixed recovery window commits revocation of the entire chain."""
+    original, replacement = refresh_session
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET used_at = clock_timestamp() - INTERVAL '6 minutes' WHERE token_hash = $1",
+        AuthService.hash_token(original["refresh_token"]),
+    )
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired refresh token"
+    rows = await auth_db.fetch(
+        "SELECT revoked, replacement_token_encrypted FROM lesiv.tokens WHERE token_hash = ANY($1::text[])",
+        [AuthService.hash_token(data["refresh_token"]) for data in refresh_session],
+    )
+    assert len(rows) == 2
+    assert all(row["revoked"] and row["replacement_token_encrypted"] is None for row in rows)
+    assert client.post("/auth/refresh", json={"refresh_token": replacement["refresh_token"]}).status_code == 401
 
-    # Login to get initial tokens
-    login_response = client.post(
+
+async def test_refresh_recovers_lost_response(client, refresh_session, auth_db, test_inspector, enable_auth):
+    """A retry recovers the same usable replacement even through a fresh service instance."""
+    original, replacement = refresh_session
+    row = await auth_db.fetchrow(
+        "SELECT * FROM lesiv.tokens WHERE token_hash = $1", AuthService.hash_token(original["refresh_token"])
+    )
+    assert row["revoked"] is True
+    assert row["used_at"] is not None
+    assert row["replacement_token_encrypted"]
+    assert replacement["refresh_token"] not in row["replacement_token_encrypted"]
+
+    # The persistent recovery value works with the same RSA keys in another instance.
+    async with auth_db.transaction():
+        recovered = await AuthService().refresh(auth_db, original["refresh_token"])
+    assert recovered is not None
+    assert recovered.refresh_token == replacement["refresh_token"]
+
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 200
+    assert response.json()["refresh_token"] == replacement["refresh_token"]
+    assert response.json()["token_type"] == "bearer"
+    payload = AuthService().verify_access_token(response.json()["access_token"])
+    assert payload is not None and payload.sub == test_inspector["id"]
+    assert client.post("/auth/refresh", json={"refresh_token": response.json()["refresh_token"]}).status_code == 200
+
+
+async def test_refresh_retries_preserve_deadline_and_token_count(client, refresh_session, auth_db, test_inspector):
+    """Retries in minute four neither extend the window nor insert new refresh tokens."""
+    original, replacement = refresh_session
+    original_hash = AuthService.hash_token(original["refresh_token"])
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET used_at = clock_timestamp() - INTERVAL '4 minutes' WHERE token_hash = $1",
+        original_hash,
+    )
+    before = await auth_db.fetchrow("SELECT * FROM lesiv.tokens WHERE token_hash = $1", original_hash)
+    for _ in range(3):
+        response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+        assert response.status_code == 200
+        assert response.json()["refresh_token"] == replacement["refresh_token"]
+    after = await auth_db.fetchrow("SELECT * FROM lesiv.tokens WHERE token_hash = $1", original_hash)
+    assert after == before
+    assert await auth_db.fetchval(
+        "SELECT count(*) FROM lesiv.tokens WHERE inspector_id = $1", test_inspector["id"]
+    ) == 2
+
+
+async def test_refresh_recovers_current_descendant(client, refresh_session, auth_db):
+    """An earlier retry returns the current active descendant after another rotation."""
+    original, replacement = refresh_session
+    next_response = client.post("/auth/refresh", json={"refresh_token": replacement["refresh_token"]})
+    assert next_response.status_code == 200
+    current = next_response.json()["refresh_token"]
+    recovered = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert recovered.status_code == 200
+    assert recovered.json()["refresh_token"] == current
+
+    # A newer rotation does not reset the original token's deadline.
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET used_at = clock_timestamp() - INTERVAL '6 minutes' WHERE token_hash = $1",
+        AuthService.hash_token(original["refresh_token"]),
+    )
+    assert client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]}).status_code == 401
+    assert await auth_db.fetchval(
+        "SELECT revoked FROM lesiv.tokens WHERE token_hash = $1", AuthService.hash_token(current)
+    ) is True
+
+
+@pytest.mark.parametrize("ciphertext", [None, "invalid-base64", "AA==", "wrong-token", "other-key"])
+async def test_refresh_missing_or_corrupt_recovery_data(client, refresh_session, auth_db, ciphertext):
+    """Missing legacy data and unreadable or mismatched ciphertext fail without revocation."""
+    original, replacement = refresh_session
+    if ciphertext == "wrong-token":
+        ciphertext = AuthService()._encrypt_refresh_token("a-different-refresh-token")
+    elif ciphertext == "other-key":
+        # Simulate recovery data written before an RSA key change.
+        service = AuthService()
+        service._refresh_encryption_key = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
+        ciphertext = service._encrypt_refresh_token(replacement["refresh_token"])
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET replacement_token_encrypted = $1 WHERE token_hash = $2",
+        ciphertext,
+        AuthService.hash_token(original["refresh_token"]),
+    )
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired refresh token"
+    assert await auth_db.fetchval(
+        "SELECT revoked FROM lesiv.tokens WHERE token_hash = $1", AuthService.hash_token(replacement["refresh_token"])
+    ) is False
+    assert client.post("/auth/refresh", json={"refresh_token": replacement["refresh_token"]}).status_code == 200
+
+
+@pytest.mark.parametrize("expired_token", [0, 1], ids=["original", "replacement"])
+async def test_refresh_recovery_rejects_expired_tokens(client, refresh_session, auth_db, expired_token):
+    """Neither an expired submitted token nor an expired replacement can be recovered."""
+    original, _ = refresh_session
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET expires_at = clock_timestamp() - INTERVAL '1 second' WHERE token_hash = $1",
+        AuthService.hash_token(refresh_session[expired_token]["refresh_token"]),
+    )
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired refresh token"
+
+
+async def test_refresh_recovery_respects_explicit_revocation(client, refresh_session, auth_db):
+    """Revoking the current token prevents an older token from recovering it."""
+    original, replacement = refresh_session
+    token_id = await auth_db.fetchval(
+        "SELECT id FROM lesiv.tokens WHERE token_hash = $1", AuthService.hash_token(replacement["refresh_token"])
+    )
+    async with auth_db.transaction():
+        await AuthRepository().revoke_token(auth_db, token_id)
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired refresh token"
+
+
+async def test_refresh_rejects_replacement_from_another_device(client, refresh_session, auth_db):
+    """Recovery validates ownership in addition to the stored replacement's hash."""
+    original, replacement = refresh_session
+    await auth_db.execute(
+        "UPDATE lesiv.tokens SET device_id = $1 WHERE token_hash = $2",
+        str(uuid4()),
+        AuthService.hash_token(replacement["refresh_token"]),
+    )
+    response = client.post("/auth/refresh", json={"refresh_token": original["refresh_token"]})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired refresh token"
+
+
+async def test_refresh_rotation_failure_rolls_back(client, test_inspector, auth_db):
+    """A real database failure in the final rotation write rolls back the replacement insert."""
+    login = client.post(
         "/auth/login",
         json={
             "username": test_inspector["username"],
             "password": test_inspector["password"],
-            "device_id": device_id,
+            "device_id": str(uuid4()),
         },
     )
+    assert login.status_code == 200
+    original = login.json()["refresh_token"]
+    token_id = await auth_db.fetchval(
+        "SELECT id FROM lesiv.tokens WHERE token_hash = $1", AuthService.hash_token(original)
+    )
+    # Unique identifiers and a row-specific trigger isolate this failure from other tests.
+    trigger_name = f"test_refresh_failure_{uuid4().hex}"
+    await auth_db.execute(
+        f"""
+        CREATE FUNCTION lesiv.{trigger_name}() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            RAISE EXCEPTION 'Test rotation failure' USING ERRCODE = '23514';
+        END;
+        $$;
+        """
+    )
+    try:
+        await auth_db.execute(
+            f"""
+            CREATE TRIGGER {trigger_name} BEFORE UPDATE ON lesiv.tokens
+            FOR EACH ROW WHEN (OLD.id = '{token_id}'::uuid)
+            EXECUTE FUNCTION lesiv.{trigger_name}();
+            """
+        )
+        response = client.post("/auth/refresh", json={"refresh_token": original})
+        assert response.status_code == 400
+        assert response.json()["type"] == "check_violation"
+        row = await auth_db.fetchrow("SELECT * FROM lesiv.tokens WHERE id = $1", token_id)
+        assert row["revoked"] is False
+        assert row["used_at"] is None
+        assert row["replaced_by_id"] is None
+        assert row["replacement_token_encrypted"] is None
+        assert await auth_db.fetchval(
+            "SELECT count(*) FROM lesiv.tokens WHERE inspector_id = $1", test_inspector["id"]
+        ) == 1
+    finally:
+        await auth_db.execute(f"DROP TRIGGER IF EXISTS {trigger_name} ON lesiv.tokens")
+        await auth_db.execute(f"DROP FUNCTION lesiv.{trigger_name}()")
 
-    assert login_response.status_code == 200
-    old_refresh_token = login_response.json()["refresh_token"]
-
-    # Refresh once (this revokes old_refresh_token)
-    refresh_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
-
-    assert refresh_response.status_code == 200
-
-    # Try to reuse the old token (should fail - theft detection)
-    reuse_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
-
-    assert reuse_response.status_code == 401
+    # After removing the failure, the original token is still usable.
+    assert client.post("/auth/refresh", json={"refresh_token": original}).status_code == 200
 
 
 def test_protected_route_with_valid_token(client, test_inspector):
@@ -428,6 +643,11 @@ def test_change_password_success(client, test_inspector):
     access_token = login_response.json()["access_token"]
     old_refresh_token = login_response.json()["refresh_token"]
 
+    # Password changes must also block recovery through a recently rotated ancestor.
+    rotation = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
+    assert rotation.status_code == 200
+    rotated_refresh_token = rotation.json()["refresh_token"]
+
     # Change password
     new_password = "new_secure_password_456"
     change_response = client.post(
@@ -453,6 +673,9 @@ def test_change_password_success(client, test_inspector):
     # Verify old refresh token is revoked
     old_refresh_response = client.post("/auth/refresh", json={"refresh_token": old_refresh_token})
     assert old_refresh_response.status_code == 401
+    assert old_refresh_response.json()["detail"] == "Invalid or expired refresh token"
+    rotated_response = client.post("/auth/refresh", json={"refresh_token": rotated_refresh_token})
+    assert rotated_response.status_code == 401
 
     # Verify new refresh token works
     new_refresh_response = client.post("/auth/refresh", json={"refresh_token": change_data["refresh_token"]})

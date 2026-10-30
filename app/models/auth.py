@@ -20,6 +20,7 @@ class Token(BaseModel):
     replaced_by_id: UUID | None
     used_at: datetime | None
     created_at: datetime
+    replacement_token_encrypted: str | None = None
 
 
 class LoginRequest(BaseModel):
