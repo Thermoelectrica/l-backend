@@ -21,7 +21,7 @@ The pipeline will:
 3. Run Flyway migrations against the production database
 4. Deploy a new Serverless Container revision pointing at the new image
 
-Refresh retry recovery requires migration `V20__refresh_token_recovery.sql` before the new
+Refresh retry recovery requires migration `V21__refresh_token_recovery.sql` before the new
 application starts. The existing pipeline applies migrations before deployment. Recovery
 uses the configured RSA key pair, which must be identical across instances and remain
 stable during the recovery window (`REUSE_LIFETIME_MIN`, default 5 minutes).
