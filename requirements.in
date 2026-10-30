@@ -9,6 +9,7 @@ python-dotenv
 httpx
 bcrypt
 pyjwt[crypto]
+cryptography
 mangum
 python-json-logger
 boto3
