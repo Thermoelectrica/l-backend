@@ -38,7 +38,9 @@ click==8.4.2
 coverage==7.14.3
     # via pytest-cov
 cryptography==49.0.0
-    # via pyjwt
+    # via
+    #   -r requirements.in
+    #   pyjwt
 distlib==0.4.3
     # via virtualenv
 fastapi==0.139.0

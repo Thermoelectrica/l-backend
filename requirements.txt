@@ -30,7 +30,9 @@ cffi==2.0.0
 click==8.4.2
     # via uvicorn
 cryptography==49.0.0
-    # via pyjwt
+    # via
+    #   -r requirements.in
+    #   pyjwt
 fastapi==0.138.2
     # via -r requirements.in
 h11==0.16.0
