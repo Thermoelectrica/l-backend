@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     trust_invalid_tokens: bool = False  # Set to True to accept expired or revoked tokens (for development/testing)
     access_token_lifetime_min: int = 15
     refresh_token_lifetime_days: int = 7
-    reuse_lifetime_min: int = 1
+    reuse_lifetime_min: int = 5
     jwt_issuer: str = "l-inspector-backend"
     jwt_audience: str = "l-inspector-app"
 

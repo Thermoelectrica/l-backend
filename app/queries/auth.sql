@@ -4,26 +4,24 @@ INSERT INTO lesiv.tokens (
     expires_at, revoked, created_at
 )
 VALUES (:id, :inspector_id, :device_id, :token_hash, :expires_at, FALSE, CURRENT_TIMESTAMP)
-RETURNING id, inspector_id, device_id, token_hash, expires_at, revoked, replaced_by_id, used_at, created_at;
+RETURNING id, inspector_id, device_id, token_hash, expires_at, revoked, replaced_by_id, used_at, created_at,
+          replacement_token_encrypted;
 
 -- name: get_token_by_hash(token_hash)^
-SELECT id, inspector_id, device_id, token_hash, expires_at, revoked, replaced_by_id, used_at, created_at
+SELECT id, inspector_id, device_id, token_hash, expires_at, revoked, replaced_by_id, used_at, created_at,
+       replacement_token_encrypted
 FROM lesiv.tokens
 WHERE token_hash = :token_hash;
 
--- name: mark_token_used(id)!
-UPDATE lesiv.tokens
-SET used_at = CURRENT_TIMESTAMP
-WHERE id = :id;
-
 -- name: revoke_token(id)!
 UPDATE lesiv.tokens
-SET revoked = TRUE
+SET revoked = TRUE, replacement_token_encrypted = NULL
 WHERE id = :id;
 
--- name: revoke_and_replace(new_token_id, old_token_id)!
+-- name: revoke_and_replace(new_token_id, old_token_id, replacement_token_encrypted)!
 UPDATE lesiv.tokens
-SET revoked = TRUE, replaced_by_id = :new_token_id
+SET revoked = TRUE, replaced_by_id = :new_token_id,
+    used_at = clock_timestamp(), replacement_token_encrypted = :replacement_token_encrypted
 WHERE id = :old_token_id;
 
 -- name: revoke_token_chain(token_id)!
@@ -58,7 +56,7 @@ forward_chain AS (
     JOIN forward_chain fc ON t.id = fc.replaced_by_id
 )
 UPDATE lesiv.tokens
-SET revoked = TRUE
+SET revoked = TRUE, replacement_token_encrypted = NULL
 WHERE id IN (SELECT id FROM forward_chain);
 
 -- name: get_inspector_by_username(username)^
@@ -79,5 +77,5 @@ RETURNING id;
 
 -- name: revoke_all_tokens_for_inspector(inspector_id)!
 UPDATE lesiv.tokens
-SET revoked = TRUE
+SET revoked = TRUE, replacement_token_encrypted = NULL
 WHERE inspector_id = :inspector_id;

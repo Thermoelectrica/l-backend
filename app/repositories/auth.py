@@ -45,17 +45,20 @@ class AuthRepository:
             return Token(**row)
         return None
 
-    async def mark_token_used(self, conn, token_id: UUID) -> None:
-        """Mark a token as used (for reuse detection)"""
-        await queries.mark_token_used(conn, id=token_id)
-
     async def revoke_token(self, conn, token_id: UUID) -> None:
         """Revoke a single token"""
         await queries.revoke_token(conn, id=token_id)
 
-    async def revoke_and_replace(self, conn, old_token_id: UUID, new_token_id: UUID) -> None:
-        """Revoke old token and link to new one"""
-        await queries.revoke_and_replace(conn, old_token_id=old_token_id, new_token_id=new_token_id)
+    async def revoke_and_replace(
+        self, conn, old_token_id: UUID, new_token_id: UUID, replacement_token_encrypted: str
+    ) -> None:
+        """Revoke old token and record its replacement and fixed recovery deadline."""
+        await queries.revoke_and_replace(
+            conn,
+            old_token_id=old_token_id,
+            new_token_id=new_token_id,
+            replacement_token_encrypted=replacement_token_encrypted,
+        )
 
     async def revoke_token_chain(self, conn, token_id: UUID) -> None:
         """Revoke entire token chain (for theft detection)"""
