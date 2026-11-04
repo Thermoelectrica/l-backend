@@ -68,6 +68,13 @@ GRANT SELECT ON lesiv.equipment_control_point_template TO l_app_role;
 GRANT SELECT ON lesiv.defect_type TO l_app_role;
 
 -- ============================================================================
+-- Inspection Schedule Aggregate
+-- ============================================================================
+
+-- inspection_schedule: SELECT only (read-only reference data)
+GRANT SELECT ON lesiv.inspection_schedule TO l_app_role;
+
+-- ============================================================================
 -- Facility Template Aggregate
 -- ============================================================================
 

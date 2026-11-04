@@ -28,6 +28,7 @@ from app.routers import (
     facility_template,
     image,
     inspection,
+    inspection_schedule,
     inspector,
     log,
     plant,
@@ -155,6 +156,7 @@ app.include_router(plant.router)
 app.include_router(equipment.router)
 app.include_router(equipment_properties.router)
 app.include_router(inspection.router)
+app.include_router(inspection_schedule.router)
 app.include_router(defect.router)
 app.include_router(work_log.router)
 app.include_router(plant_group.router)
