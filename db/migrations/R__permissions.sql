@@ -118,11 +118,11 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_control_point TO l_app_role;
 GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_defect TO l_app_role;
 
 -- ============================================================================
--- Equipment Properties Aggregate
+-- Equipment Property Aggregate
 -- ============================================================================
 
--- equipment_properties: SELECT, INSERT, UPDATE
-GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_properties TO l_app_role;
+-- equipment_property: SELECT, INSERT, UPDATE
+GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_property TO l_app_role;
 
 -- ============================================================================
 -- Inspection Aggregate

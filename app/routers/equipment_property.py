@@ -1,8 +1,8 @@
-"""EquipmentProperties router - equipment attributes editable without a plant claim
+"""EquipmentProperty router - equipment attributes editable without a plant claim
 
 Modifying equipment through PUT /equipment requires the caller's device to hold the pessimistic
 claim on the whole plant. That is deliberately coarse for structural edits, but far too coarse for
-a single attribute like the next inspection date: one user scheduling one piece of equipment would
+a single attribute like the inspection schedule: one user scheduling one piece of equipment would
 lock everyone else out of the entire plant until the claim goes stale.
 
 So these attributes are their own aggregate and this router performs no claim check - the same
@@ -20,21 +20,21 @@ from app.constants import DEFAULT_MODIFIED_SINCE
 from app.database import get_db_connection
 from app.dependencies.permissions import get_permission_service
 from app.exceptions import ConcurrentModificationError
-from app.models.equipment_properties import (
-    EquipmentProperties,
-    EquipmentPropertiesListResponse,
+from app.models.equipment_property import (
+    EquipmentProperty,
+    EquipmentPropertyListResponse,
 )
 from app.models.inspector import AccessLevel
-from app.repositories.equipment_properties import EquipmentPropertiesRepository
+from app.repositories.equipment_property import EquipmentPropertyRepository
 from app.services.permission_service import PermissionService
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/equipment-properties", tags=["equipment-properties"])
-equipment_properties_repo = EquipmentPropertiesRepository()
+router = APIRouter(prefix="/equipment-property", tags=["equipment-property"])
+equipment_property_repo = EquipmentPropertyRepository()
 
 
-@router.get("/all", response_model=EquipmentPropertiesListResponse)
-async def get_all_equipment_properties(
+@router.get("/all", response_model=EquipmentPropertyListResponse)
+async def get_all_equipment_property(
     modified_since: datetime = Query(
         DEFAULT_MODIFIED_SINCE,
         description="Only return equipment properties modified after this timestamp",
@@ -43,7 +43,7 @@ async def get_all_equipment_properties(
     permission_service: PermissionService = Depends(get_permission_service),
 ):
     """Get all equipment properties, filtered by modification date and accessible plants"""
-    all_properties = await equipment_properties_repo.get_all(conn, modified_since=modified_since)
+    all_properties = await equipment_property_repo.get_all(conn, modified_since=modified_since)
 
     # Filter to only properties from accessible plants.
     # The aggregate is keyed by equipment_id, so the existing equipment lookup resolves the plant.
@@ -53,11 +53,11 @@ async def get_all_equipment_properties(
         if plant_id and await permission_service.check_plant_access(plant_id):
             accessible_properties.append(properties)
 
-    return EquipmentPropertiesListResponse(items=accessible_properties)
+    return EquipmentPropertyListResponse(items=accessible_properties)
 
 
-@router.get("/by_id/{equipment_id}", response_model=EquipmentProperties)
-async def get_equipment_properties_by_id(
+@router.get("/by_id/{equipment_id}", response_model=EquipmentProperty)
+async def get_equipment_property_by_id(
     equipment_id: UUID,
     conn=Depends(get_db_connection),
     permission_service: PermissionService = Depends(get_permission_service),
@@ -72,14 +72,14 @@ async def get_equipment_properties_by_id(
         raise HTTPException(status_code=404, detail="Equipment not found")
     await permission_service.require_plant_access(plant_id)
 
-    properties = await equipment_properties_repo.get_by_id(conn, equipment_id)
+    properties = await equipment_property_repo.get_by_id(conn, equipment_id)
     if not properties:
-        return EquipmentProperties(equipment_id=equipment_id)
+        return EquipmentProperty(equipment_id=equipment_id)
     return properties
 
 
-@router.get("/by_plant_id/{plant_id}", response_model=list[EquipmentProperties])
-async def get_equipment_properties_by_plant_id(
+@router.get("/by_plant_id/{plant_id}", response_model=list[EquipmentProperty])
+async def get_equipment_property_by_plant_id(
     plant_id: UUID,
     modified_since: datetime = Query(
         DEFAULT_MODIFIED_SINCE,
@@ -95,12 +95,12 @@ async def get_equipment_properties_by_plant_id(
     # Check plant access
     await permission_service.require_plant_access(plant_id)
 
-    return await equipment_properties_repo.get_by_plant_id(conn, plant_id, modified_since=modified_since)
+    return await equipment_property_repo.get_by_plant_id(conn, plant_id, modified_since=modified_since)
 
 
-@router.put("", response_model=EquipmentProperties)
-async def upsert_equipment_properties(
-    properties: EquipmentProperties,
+@router.put("", response_model=EquipmentProperty)
+async def upsert_equipment_property(
+    properties: EquipmentProperty,
     force: bool = Query(
         default=False,
         description="If true, ignore server_modified_at validation",
@@ -133,11 +133,11 @@ async def upsert_equipment_properties(
             if plant_id:
                 await permission_service.require_plant_access(plant_id)
 
-            result = await equipment_properties_repo.save(conn, properties, force=force)
+            result = await equipment_property_repo.save(conn, properties, force=force)
         return result
     except ConcurrentModificationError as e:
         logger.warning(
-            "Concurrent modification detected for equipment properties",
+            "Concurrent modification detected for equipment property",
             extra={
                 "equipment_id": str(properties.equipment_id),
                 "conflict": e.conflict_error.model_dump(mode="json"),
@@ -146,7 +146,7 @@ async def upsert_equipment_properties(
         raise HTTPException(status_code=409, detail=e.conflict_error.model_dump(mode="json"))
     except ValueError as e:
         logger.warning(
-            "Invalid equipment properties data",
+            "Invalid equipment property data",
             extra={"equipment_id": str(properties.equipment_id), "error": str(e)},
         )
         raise HTTPException(status_code=400, detail=str(e))
