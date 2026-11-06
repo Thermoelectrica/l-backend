@@ -22,6 +22,8 @@ GRANT USAGE ON TYPE lesiv.image_upload_status TO l_app_role;
 -- Added in V11_sticker_installation.sql
 GRANT USAGE ON TYPE lesiv.sticker_event_kind TO l_app_role;
 GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
+-- Added in V23__rename_equipment_properties_to_entity_property.sql
+GRANT USAGE ON TYPE lesiv.entity_type TO l_app_role;
 
 -- ============================================================================
 -- Plant permissions
@@ -118,11 +120,11 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_control_point TO l_app_role;
 GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_defect TO l_app_role;
 
 -- ============================================================================
--- Equipment Property Aggregate
+-- Entity Property Aggregate
 -- ============================================================================
 
--- equipment_property: SELECT, INSERT, UPDATE
-GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_property TO l_app_role;
+-- entity_property: SELECT, INSERT, UPDATE
+GRANT SELECT, INSERT, UPDATE ON lesiv.entity_property TO l_app_role;
 
 -- ============================================================================
 -- Inspection Aggregate

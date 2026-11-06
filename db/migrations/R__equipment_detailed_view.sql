@@ -5,7 +5,7 @@
 -- 3) Facility name
 -- 4) Plant name and id
 -- 5) Last inspection date and inspector full name
--- 6) Inspection schedule id (from the equipment_property aggregate)
+-- 6) Inspection schedule id (from the entity_property aggregate, equipment rows only)
 -- 7) Sum of control point and sticker count
 -- 8) Number of active and resolved defects
 
@@ -116,7 +116,7 @@ SELECT
     li.last_inspection_date,
     li.last_inspector_name,
 
-    -- Inspection schedule id, from the equipment_property aggregate (0..1 rows per equipment)
+    -- Inspection schedule id, from the entity_property aggregate (0..1 rows per equipment)
     eprop.inspection_schedule_id,
 
     -- Control point and sticker summary
@@ -134,7 +134,7 @@ FROM lesiv.equipment e
     INNER JOIN lesiv.plant p ON f.plant_id = p.id
     LEFT JOIN lesiv.equipment_type et ON e.equipment_type_id = et.id
     LEFT JOIN last_inspection li ON e.id = li.equipment_id
-    LEFT JOIN lesiv.equipment_property eprop ON e.id = eprop.equipment_id
+    LEFT JOIN lesiv.entity_property eprop ON eprop.entity_type = 'equipment' AND e.id = eprop.entity_id
     LEFT JOIN control_point_summary cps ON e.id = cps.equipment_id
     LEFT JOIN sticker_summary ss ON e.id = ss.equipment_id
     LEFT JOIN defect_summary ds ON e.id = ds.equipment_id;

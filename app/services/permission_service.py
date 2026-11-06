@@ -10,6 +10,7 @@ from aiosql.queries import Queries
 from fastapi import HTTPException, status
 
 from app.config import settings
+from app.models.entity_property import EntityType
 from app.models.inspector import AccessLevel, Inspector
 from app.utils.async_wrapper import AsyncWrapper
 
@@ -125,6 +126,20 @@ class PermissionService:
             UUID of the plant, or None if not found
         """
         result = await queries.get_plant_from_equipment(self.conn, equipment_id=equipment_id)
+        return result["plant_id"] if result else None
+
+    async def get_plant_id_from_entity(self, entity_type: EntityType, entity_id: UUID) -> Optional[UUID]:
+        """
+        Get plant_id from an (entity_type, entity_id) pair.
+
+        Args:
+            entity_type: kind of entity the id belongs to - plant, facility or equipment
+            entity_id: UUID of the entity
+
+        Returns:
+            UUID of the plant (the plant itself for entity_type='plant'), or None if not found
+        """
+        result = await queries.get_plant_from_entity(self.conn, entity_type=entity_type.value, entity_id=entity_id)
         return result["plant_id"] if result else None
 
     async def get_plant_id_from_inspection(self, inspection_id: UUID) -> Optional[UUID]:
