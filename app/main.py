@@ -22,12 +22,13 @@ from app.routers import (
     auth,
     defect,
     defect_type,
+    entity_property,
     equipment,
-    equipment_properties,
     equipment_type,
     facility_template,
     image,
     inspection,
+    inspection_schedule,
     inspector,
     log,
     plant,
@@ -153,8 +154,9 @@ app.include_router(facility_template.router)
 app.include_router(defect_type.router)
 app.include_router(plant.router)
 app.include_router(equipment.router)
-app.include_router(equipment_properties.router)
+app.include_router(entity_property.router)
 app.include_router(inspection.router)
+app.include_router(inspection_schedule.router)
 app.include_router(defect.router)
 app.include_router(work_log.router)
 app.include_router(plant_group.router)
