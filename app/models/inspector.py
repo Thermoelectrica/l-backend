@@ -29,6 +29,7 @@ class Inspector(BaseModel):
     id: int
     full_name: str
     username: str
+    is_internal: bool = False
     # Internal only - excluded from API responses to prevent disclosure
     access_level: AccessLevel = Field(default=AccessLevel.READ, exclude=True)
     is_deleted: bool = False

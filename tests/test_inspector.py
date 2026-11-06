@@ -16,7 +16,8 @@ def test_get_all_inspectors(client: TestClient):
     assert len(items) >= 3
 
     # Verify structure of first item
-    assert all(key in items[0] for key in ["id", "full_name", "username", "server_modified_at"])
+    assert all(key in items[0] for key in ["id", "full_name", "username", "is_internal", "server_modified_at"])
+    assert all(isinstance(item["is_internal"], bool) for item in items)
 
     # Verify password_hash is NOT included
     assert "password_hash" not in items[0]
@@ -38,10 +39,21 @@ def test_inspector_data_structure(client: TestClient):
     assert "id" in inspector
     assert "full_name" in inspector
     assert "username" in inspector
+    assert inspector["is_internal"] is True
     assert "server_modified_at" in inspector
 
     # Verify password_hash is NOT exposed
     assert "password_hash" not in inspector
+
+
+def test_external_inspector_is_not_internal(client: TestClient):
+    """Test that external inspectors expose is_internal as false."""
+    response = client.get("/inspector/all")
+    assert response.status_code == 200
+
+    inspector = next((item for item in response.json()["items"] if item["id"] == 6), None)
+    assert inspector is not None
+    assert inspector["is_internal"] is False
 
 
 def test_multiple_inspectors(client: TestClient):
