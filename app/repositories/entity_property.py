@@ -1,4 +1,4 @@
-"""EquipmentProperties repository"""
+"""EntityProperty repository"""
 
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,70 +11,69 @@ from app.config import settings
 from app.constants import DEFAULT_MODIFIED_SINCE
 from app.exceptions import ConcurrentModificationError
 from app.models import ConflictDetail, ConflictError
-from app.models.equipment_properties import (
-    EquipmentProperties,
-    EquipmentPropertiesListResponse,
+from app.models.entity_property import (
+    EntityProperty,
+    EntityPropertyListResponse,
 )
 from app.utils.async_wrapper import AsyncWrapper
 from app.utils.datetime_utils import truncate_to_milliseconds
 
 # Load queries with configurable driver
-_queries = aiosql.from_path("app/queries/equipment_properties.sql", settings.db_driver)
+_queries = aiosql.from_path("app/queries/entity_property.sql", settings.db_driver)
 queries: Queries = AsyncWrapper(_queries) if settings.db_driver == "psycopg2" else _queries  # type: ignore[assignment]
 
 
-class EquipmentPropertiesRepository:
-    """Repository for EquipmentProperties aggregate with optimistic concurrency control.
+class EntityPropertyRepository:
+    """Repository for EntityProperty aggregate with optimistic concurrency control.
 
     There is no delete: the table has no is_deleted column, because an absent row and a row with
     every attribute NULL describe the same state. Clearing a property means setting it to NULL.
     """
 
-    async def get_by_id(self, conn, equipment_id: UUID) -> Optional[EquipmentProperties]:
-        """Get equipment properties by equipment ID, or None if the equipment has no row yet"""
-        properties_row = await queries.get_by_id(conn, id=equipment_id)
+    async def get_by_id(self, conn, entity_id: UUID) -> Optional[EntityProperty]:
+        """Get entity property by entity ID, or None if the entity has no row yet"""
+        properties_row = await queries.get_by_id(conn, id=entity_id)
         if not properties_row:
             return None
-        return EquipmentProperties(**properties_row)
+        return EntityProperty(**properties_row)
 
-    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> EquipmentPropertiesListResponse:
-        """Get all equipment properties, optionally filtered by modification date"""
-        properties_rows = [
-            row async for row in queries.get_all_equipment_properties(conn, modified_since=modified_since)
-        ]
-        properties_list = [EquipmentProperties(**row) for row in properties_rows]
-        return EquipmentPropertiesListResponse(items=properties_list)
+    async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> EntityPropertyListResponse:
+        """Get all entity properties, optionally filtered by modification date"""
+        properties_rows = [row async for row in queries.get_all_entity_property(conn, modified_since=modified_since)]
+        properties_list = [EntityProperty(**row) for row in properties_rows]
+        return EntityPropertyListResponse(items=properties_list)
 
     async def get_by_plant_id(
         self, conn, plant_id: UUID, modified_since: datetime = DEFAULT_MODIFIED_SINCE
-    ) -> list[EquipmentProperties]:
-        """Get all equipment properties for a plant, optionally filtered by modification date.
+    ) -> list[EntityProperty]:
+        """Get all entity properties for a plant, optionally filtered by modification date.
 
-        Only rows that actually exist are returned: equipment without a properties row has nothing
+        Covers all three entity types: the plant's own row, its facilities and their equipment.
+        Only rows that actually exist are returned: entities without a property row have nothing
         for the client to sync.
         """
         properties_rows = [
             row async for row in queries.get_by_plant_id(conn, plant_id=plant_id, modified_since=modified_since)
         ]
-        return [EquipmentProperties(**row) for row in properties_rows]
+        return [EntityProperty(**row) for row in properties_rows]
 
-    async def save(self, conn, properties: EquipmentProperties, force: bool = False) -> EquipmentProperties:
+    async def save(self, conn, properties: EntityProperty, force: bool = False) -> EntityProperty:
         """
-        Save equipment properties with optimistic concurrency control.
+        Save entity property with optimistic concurrency control.
         Must be called within transaction.
 
         Args:
             conn: Database connection
-            properties: Equipment properties to save
+            properties: Entity property to save
             force: If True, ignore server_modified_at validation
 
         Raises:
             ConcurrentModificationError: If concurrent modification detected (force=False)
         """
-        equipment_id = properties.equipment_id
+        entity_id = properties.entity_id
 
         # Get current state if exists
-        current = await self.get_by_id(conn, equipment_id)
+        current = await self.get_by_id(conn, entity_id)
 
         # New server_modified_at timestamp
         new_server_modified_at = datetime.now(timezone.utc)
@@ -85,7 +84,7 @@ class EquipmentPropertiesRepository:
             if properties.server_modified_at is None:
                 raise ConcurrentModificationError(
                     ConflictError(
-                        message="server_modified_at is required for updating existing equipment properties",
+                        message="server_modified_at is required for updating existing entity property",
                         server_modified_at=current.server_modified_at,
                         conflicts=[
                             ConflictDetail(
@@ -101,7 +100,7 @@ class EquipmentPropertiesRepository:
             ):
                 raise ConcurrentModificationError(
                     ConflictError(
-                        message="Equipment properties were modified by another client",
+                        message="Entity property was modified by another client",
                         server_modified_at=current.server_modified_at,
                         client_modified_at=properties.server_modified_at,
                         conflicts=[
@@ -115,16 +114,17 @@ class EquipmentPropertiesRepository:
                     )
                 )
 
-        # Upsert equipment properties
-        await queries.upsert_equipment_properties(
+        # Upsert entity property
+        await queries.upsert_entity_property(
             conn,
-            equipment_id=equipment_id,
-            next_inspection_date=properties.next_inspection_date,
+            entity_id=entity_id,
+            entity_type=properties.entity_type.value,
+            inspection_schedule_id=properties.inspection_schedule_id,
             server_modified_at=new_server_modified_at,
         )
 
         # Return updated aggregate
-        result = await self.get_by_id(conn, equipment_id)
+        result = await self.get_by_id(conn, entity_id)
         if result is None:
-            raise ValueError(f"Equipment properties for {equipment_id} not found after save")
+            raise ValueError(f"Entity property for {entity_id} not found after save")
         return result
