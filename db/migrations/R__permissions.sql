@@ -22,6 +22,8 @@ GRANT USAGE ON TYPE lesiv.image_upload_status TO l_app_role;
 -- Added in V11_sticker_installation.sql
 GRANT USAGE ON TYPE lesiv.sticker_event_kind TO l_app_role;
 GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
+-- Added in V23__rename_equipment_properties_to_entity_property.sql
+GRANT USAGE ON TYPE lesiv.entity_type TO l_app_role;
 
 -- ============================================================================
 -- Plant permissions
@@ -68,6 +70,13 @@ GRANT SELECT ON lesiv.equipment_control_point_template TO l_app_role;
 GRANT SELECT ON lesiv.defect_type TO l_app_role;
 
 -- ============================================================================
+-- Inspection Schedule Aggregate
+-- ============================================================================
+
+-- inspection_schedule: SELECT only (read-only reference data)
+GRANT SELECT ON lesiv.inspection_schedule TO l_app_role;
+
+-- ============================================================================
 -- Facility Template Aggregate
 -- ============================================================================
 
@@ -111,11 +120,11 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_control_point TO l_app_role;
 GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_defect TO l_app_role;
 
 -- ============================================================================
--- Equipment Properties Aggregate
+-- Entity Property Aggregate
 -- ============================================================================
 
--- equipment_properties: SELECT, INSERT, UPDATE
-GRANT SELECT, INSERT, UPDATE ON lesiv.equipment_properties TO l_app_role;
+-- entity_property: SELECT, INSERT, UPDATE
+GRANT SELECT, INSERT, UPDATE ON lesiv.entity_property TO l_app_role;
 
 -- ============================================================================
 -- Inspection Aggregate

@@ -20,6 +20,23 @@ FROM lesiv.equipment e
 JOIN lesiv.facility f ON e.facility_id = f.id
 WHERE e.id = :equipment_id;
 
+-- name: get_plant_from_entity(entity_type, entity_id)^
+-- Get plant_id from an (entity_type, entity_id) pair, where entity_type is 'plant', 'facility'
+-- or 'equipment'. The plant row resolves to itself.
+SELECT p.id AS plant_id
+FROM lesiv.plant p
+WHERE :entity_type = 'plant' AND p.id = :entity_id
+UNION ALL
+SELECT f.plant_id
+FROM lesiv.facility f
+WHERE :entity_type = 'facility' AND f.id = :entity_id
+UNION ALL
+SELECT f.plant_id
+FROM lesiv.equipment e
+JOIN lesiv.facility f ON e.facility_id = f.id
+WHERE :entity_type = 'equipment' AND e.id = :entity_id
+LIMIT 1;
+
 -- name: get_plant_from_inspection(inspection_id)^
 -- Get plant_id from inspection_id
 SELECT f.plant_id

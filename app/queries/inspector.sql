@@ -6,6 +6,7 @@ SELECT
     full_name,
     username,
     access_level,
+    is_internal,
     server_modified_at
 FROM lesiv.inspector
 WHERE server_modified_at > :modified_since
@@ -18,6 +19,7 @@ SELECT
     username,
     password_hash,
     access_level,
+    is_internal,
     server_modified_at
 FROM lesiv.inspector
 WHERE id = :id;
