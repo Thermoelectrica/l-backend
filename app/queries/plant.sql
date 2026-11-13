@@ -20,6 +20,13 @@ FROM lesiv.facility
 WHERE plant_id = :plant_id
 ORDER BY name;
 
+-- name: get_sticker_type_ids(plant_id)
+-- Get sticker types explicitly permitted for a plant. No rows means unrestricted.
+SELECT sticker_type_id
+FROM lesiv.plant_sticker_type
+WHERE plant_id = :plant_id
+ORDER BY sticker_type_id;
+
 -- name: get_facility_ids(plant_id)
 -- Get facility IDs for a plant
 SELECT id
@@ -66,6 +73,17 @@ ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     facility_template_id = EXCLUDED.facility_template_id,
     is_deleted = EXCLUDED.is_deleted;
+
+-- name: upsert_plant_sticker_type(plant_id, sticker_type_id)!
+-- Add an explicitly permitted sticker type for a plant.
+INSERT INTO lesiv.plant_sticker_type (plant_id, sticker_type_id)
+VALUES (:plant_id, :sticker_type_id)
+ON CONFLICT (plant_id, sticker_type_id) DO NOTHING;
+
+-- name: delete_plant_sticker_type(plant_id, sticker_type_id)!
+-- Remove an explicitly permitted sticker type from a plant.
+DELETE FROM lesiv.plant_sticker_type
+WHERE plant_id = :plant_id AND sticker_type_id = :sticker_type_id;
 
 -- name: delete_plant(id)!
 -- Logically delete plant
