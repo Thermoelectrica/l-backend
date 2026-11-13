@@ -106,6 +106,72 @@ def test_get_all_plants(client: TestClient, plant_data):
     assert str(plant_id_2) in plant_ids
 
 
+def test_plant_sticker_type_restriction_is_returned_but_not_in_list(client: TestClient, plant_data):
+    """PUT and GET /by_id expose configured sticker types, while /all stays lightweight."""
+    plant_data["sticker_type_ids"] = [1, 4]
+
+    put_response = client.put("/plant", json=plant_data)
+    assert put_response.status_code == 200
+    assert put_response.json()["sticker_type_ids"] == [1, 4]
+
+    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["sticker_type_ids"] == [1, 4]
+
+    list_response = client.get("/plant/all")
+    assert list_response.status_code == 200
+    plant_item = next(item for item in list_response.json()["items"] if item["id"] == plant_data["id"])
+    assert "sticker_type_ids" not in plant_item
+
+
+def test_plant_sticker_type_restriction_is_preserved_when_field_is_missing_or_null(client: TestClient, plant_data):
+    """Old PUT clients and explicit null leave an existing sticker type restriction unchanged."""
+    plant_data["sticker_type_ids"] = [1, 4]
+    created = client.put("/plant", json=plant_data)
+    assert created.status_code == 200
+
+    missing_field_data = created.json()
+    missing_field_data.pop("sticker_type_ids")
+    missing_field_data["name"] = "Updated without sticker types"
+    missing_response = client.put("/plant", json=missing_field_data)
+    assert missing_response.status_code == 200
+    assert missing_response.json()["sticker_type_ids"] == [1, 4]
+
+    null_field_data = missing_response.json()
+    null_field_data["sticker_type_ids"] = None
+    null_field_data["name"] = "Updated with null sticker types"
+    null_response = client.put("/plant", json=null_field_data)
+    assert null_response.status_code == 200
+    assert null_response.json()["sticker_type_ids"] == [1, 4]
+
+
+def test_empty_plant_sticker_type_restriction_clears_configured_types(client: TestClient, plant_data):
+    """An explicit empty sticker_type_ids list removes every plant restriction."""
+    plant_data["sticker_type_ids"] = [1, 4]
+    created = client.put("/plant", json=plant_data)
+    assert created.status_code == 200
+
+    clear_data = created.json()
+    clear_data["sticker_type_ids"] = []
+    cleared = client.put("/plant", json=clear_data)
+    assert cleared.status_code == 200
+    assert cleared.json()["sticker_type_ids"] == []
+
+    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["sticker_type_ids"] == []
+
+
+def test_plant_sticker_type_restriction_rejects_unknown_type(client: TestClient, plant_data):
+    """PUT rejects a restriction containing a sticker type absent from the dictionary."""
+    plant_data["sticker_type_ids"] = [2_147_483_647]
+
+    response = client.put("/plant", json=plant_data)
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["type"] == "foreign_key_violation"
+
+
 def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1):
     """Test updating a plant with correct server_modified_at"""
     create_response = client.put("/plant", json=plant_data)

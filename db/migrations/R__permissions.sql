@@ -106,6 +106,9 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.plant TO l_app_role;
 -- facility: SELECT, INSERT, UPDATE 
 GRANT SELECT, INSERT, UPDATE ON lesiv.facility TO l_app_role;
 
+-- plant_sticker_type: relation rows are synchronized by deleting and inserting
+GRANT SELECT, INSERT, DELETE ON lesiv.plant_sticker_type TO l_app_role;
+
 -- ============================================================================
 -- Equipment Aggregate
 -- ============================================================================

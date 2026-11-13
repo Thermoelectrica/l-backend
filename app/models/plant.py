@@ -32,6 +32,9 @@ class Plant(BaseModel):
     claimed_at: Optional[datetime] = None
     is_deleted: bool = False
     server_modified_at: datetime
+    # None means the PUT client did not send a restriction. An empty list means
+    # that no restriction is configured and all sticker types are permitted.
+    sticker_type_ids: Optional[list[int]] | None = None
     facilities: list[Facility] = Field(default_factory=list)
 
     @computed_field
