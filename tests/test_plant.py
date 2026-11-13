@@ -169,7 +169,7 @@ def test_plant_sticker_type_restriction_rejects_unknown_type(client: TestClient,
     response = client.put("/plant", json=plant_data)
 
     assert response.status_code == 400
-    assert response.json()["detail"]["type"] == "foreign_key_violation"
+    assert response.json()["type"] == "foreign_key_violation"
 
 
 def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1):
