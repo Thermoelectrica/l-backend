@@ -807,3 +807,21 @@ async def test_external_plant_type_is_read_only(client: TestClient, plant_data, 
     response = client.put("/plant", json=current)
     assert response.status_code == 200
     assert response.json()["external_plant_type"] == "iesk"
+
+
+async def test_unknown_external_plant_type_dropped(client: TestClient, plant_data, plant_id):
+    """An unknown external_plant_type in PUT /plant is dropped instead of failing the request with 422"""
+    plant_data["external_plant_type"] = "some_future_type"
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["external_plant_type"] is None
+
+    # The stored marker is not affected by whatever the client sends
+    await _mark_iesk(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    for value in ("some_future_type", "IESK", 123):
+        current["external_plant_type"] = value
+        response = client.put("/plant", json=current)
+        assert response.status_code == 200, value
+        assert response.json()["external_plant_type"] == "iesk"
+        current["server_modified_at"] = response.json()["server_modified_at"]

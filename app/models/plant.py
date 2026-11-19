@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from app.utils.claim_utils import is_claim_stale
 
@@ -43,6 +43,21 @@ class Plant(BaseModel):
     # None for ordinary plants.
     external_plant_type: Optional[ExternalPlantType] = None
     facilities: list[Facility] = Field(default_factory=list)
+
+    @field_validator("external_plant_type", mode="before")
+    @classmethod
+    def drop_unknown_external_plant_type(cls, v: object) -> Optional[ExternalPlantType]:
+        """
+        Plant is also the PUT body, and clients echo this field back. The value is ignored anyway,
+        so an unknown one (a type from a newer server version, a client bug) becomes None
+        instead of failing the whole request with 422. Types are added to ExternalPlantType on demand.
+        """
+        if isinstance(v, ExternalPlantType):
+            return v
+        try:
+            return ExternalPlantType(v)
+        except ValueError:
+            return None
 
     @computed_field
     @property

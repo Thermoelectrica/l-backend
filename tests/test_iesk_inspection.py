@@ -404,11 +404,42 @@ def test_read_level_cannot_put(client: TestClient, iesk_inspection_data, auth_se
     assert response.status_code == 403
 
 
-def test_inspect_level_can_put(client: TestClient, iesk_inspection_data, auth_service):
-    """MODIFY (>= INSPECT) inspector with plant access can create IESK inspections without a claim"""
-    token = auth_service.create_access_token(1, uuid4(), "MODIFY")
-    response = client.put("/iesk-inspection", json=iesk_inspection_data, headers={"Authorization": f"Bearer {token}"})
+@pytest_asyncio.fixture
+async def inspect_level_inspector_id(plant_id, seed_iesk_plant):
+    """Create an inspector with the INSPECT access level and access to the test plant only."""
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        inspector_id = await conn.fetchval(
+            "INSERT INTO lesiv.inspector (full_name, username, password_hash, access_level, is_internal)"
+            " VALUES ('Inspect Level', $1, 'x', 'INSPECT', FALSE) RETURNING id",
+            f"inspect_{uuid4().hex}",
+        )
+        await conn.execute(
+            "INSERT INTO lesiv.inspector_plant_access (inspector_id, plant_id) VALUES ($1, $2)",
+            inspector_id,
+            plant_id,
+        )
+    finally:
+        await conn.close()
+    return inspector_id
+
+
+def test_inspect_level_can_put(client: TestClient, iesk_inspection_data, inspect_level_inspector_id, auth_service):
+    """An INSPECT-level inspector with plant access can create and update IESK inspections without a claim"""
+    headers = {
+        "Authorization": f"Bearer {auth_service.create_access_token(inspect_level_inspector_id, uuid4(), 'INSPECT')}"
+    }
+    iesk_inspection_data["inspector_id"] = inspect_level_inspector_id
+
+    response = client.put("/iesk-inspection", json=iesk_inspection_data, headers=headers)
     assert response.status_code == 200
+    created = response.json()
+    assert created["inspector_id"] == inspect_level_inspector_id
+
+    created["status"] = "COMPLETED"
+    response = client.put("/iesk-inspection", json=created, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "COMPLETED"
 
 
 def test_no_plant_access(client: TestClient, iesk_inspection_data, iesk_inspection_id, plant_id, auth_service):
