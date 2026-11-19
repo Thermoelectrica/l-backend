@@ -742,12 +742,12 @@ def test_created_by_user_id_null_for_anonymous_create(client: TestClient, plant_
 
 
 # ============================================================================
-# external_plant_type (derived from lesiv.iesk_plant)
+# extensions (enabled lesiv.plant_extension flags)
 # ============================================================================
 
 
-async def _mark_iesk(plant_id):
-    """Mark a plant as IESK directly in the DB (the app never writes lesiv.iesk_plant)"""
+async def _enable_extension(plant_id, extension_type="IESK"):
+    """Enable a plant extension directly in the DB (the app never writes lesiv.plant_extension)"""
     import asyncpg
 
     from app.config import settings
@@ -755,73 +755,85 @@ async def _mark_iesk(plant_id):
     conn = await asyncpg.connect(settings.get_database_url())
     try:
         await conn.execute(
-            "INSERT INTO lesiv.iesk_plant (plant_id) VALUES ($1) ON CONFLICT (plant_id) DO NOTHING", plant_id
+            "INSERT INTO lesiv.plant_extension (plant_id, extension_type) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            plant_id,
+            extension_type,
         )
     finally:
         await conn.close()
 
 
-def test_external_plant_type_null_for_regular_plant(client: TestClient, plant_data, plant_id):
-    """Ordinary plants expose external_plant_type = null in by_id and all"""
+def test_extensions_empty_for_regular_plant(client: TestClient, plant_data, plant_id):
+    """Ordinary plants expose extensions = [] in by_id and all"""
     response = client.put("/plant", json=plant_data)
     assert response.status_code == 200
-    assert response.json()["external_plant_type"] is None
+    assert response.json()["extensions"] == []
 
     item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
-    assert "external_plant_type" in item
-    assert item["external_plant_type"] is None
+    assert item["extensions"] == []
 
 
-async def test_external_plant_type_iesk(client: TestClient, plant_data, plant_id):
-    """A plant listed in lesiv.iesk_plant exposes external_plant_type = 'iesk' in by_id and all"""
+async def test_extensions_iesk(client: TestClient, plant_data, plant_id):
+    """A plant with the IESK row in lesiv.plant_extension exposes extensions = ['IESK'] in by_id and all"""
     client.put("/plant", json=plant_data)
-    await _mark_iesk(plant_id)
+    await _enable_extension(plant_id)
 
     response = client.get(f"/plant/by_id/{plant_id}")
     assert response.status_code == 200
-    assert response.json()["external_plant_type"] == "iesk"
+    assert response.json()["extensions"] == ["IESK"]
 
     item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
-    assert item["external_plant_type"] == "iesk"
+    assert item["extensions"] == ["IESK"]
 
 
-async def test_external_plant_type_is_read_only(client: TestClient, plant_data, plant_id):
-    """external_plant_type sent by the client in PUT /plant is ignored in both directions"""
+async def test_extensions_are_read_only(client: TestClient, plant_data, plant_id):
+    """extensions sent by the client in PUT /plant are ignored in both directions"""
     created = client.put("/plant", json=plant_data).json()
 
-    # A client cannot mark a plant as IESK
-    created["external_plant_type"] = "iesk"
+    # A client cannot enable an extension
+    created["extensions"] = ["IESK"]
     updated = client.put("/plant", json=created).json()
-    assert updated["external_plant_type"] is None
+    assert updated["extensions"] == []
 
-    # ... nor clear the marker (old clients omit the field, new ones may send null)
-    await _mark_iesk(plant_id)
+    # ... nor disable it (old clients omit the field, new ones may send an empty list)
+    await _enable_extension(plant_id)
     current = client.get(f"/plant/by_id/{plant_id}").json()
-    current["external_plant_type"] = None
+    current["extensions"] = []
     response = client.put("/plant", json=current)
     assert response.status_code == 200
-    assert response.json()["external_plant_type"] == "iesk"
+    assert response.json()["extensions"] == ["IESK"]
 
-    del current["external_plant_type"]
+    del current["extensions"]
     current["server_modified_at"] = response.json()["server_modified_at"]
     response = client.put("/plant", json=current)
     assert response.status_code == 200
-    assert response.json()["external_plant_type"] == "iesk"
+    assert response.json()["extensions"] == ["IESK"]
 
 
-async def test_unknown_external_plant_type_dropped(client: TestClient, plant_data, plant_id):
-    """An unknown external_plant_type in PUT /plant is dropped instead of failing the request with 422"""
-    plant_data["external_plant_type"] = "some_future_type"
+async def test_unknown_extensions_dropped(client: TestClient, plant_data, plant_id):
+    """Unknown extensions or garbage in PUT /plant are dropped instead of failing the request with 422"""
+    plant_data["extensions"] = ["SOME_FUTURE_EXTENSION"]
     response = client.put("/plant", json=plant_data)
     assert response.status_code == 200
-    assert response.json()["external_plant_type"] is None
+    assert response.json()["extensions"] == []
 
-    # The stored marker is not affected by whatever the client sends
-    await _mark_iesk(plant_id)
+    # The stored flags are not affected by whatever the client sends
+    await _enable_extension(plant_id)
     current = client.get(f"/plant/by_id/{plant_id}").json()
-    for value in ("some_future_type", "IESK", 123):
-        current["external_plant_type"] = value
+    for value in (["SOME_FUTURE_EXTENSION"], ["iesk", "IESK", "IESK"], "IESK", None, [123]):
+        current["extensions"] = value
         response = client.put("/plant", json=current)
         assert response.status_code == 200, value
-        assert response.json()["external_plant_type"] == "iesk"
+        assert response.json()["extensions"] == ["IESK"]
         current["server_modified_at"] = response.json()["server_modified_at"]
+
+
+def test_extensions_validator_dedupes_and_filters():
+    """The input validator keeps known extensions once, in order, and drops everything else"""
+    from app.models.plant import Plant, PlantExtensionType
+
+    body = {"id": str(uuid4()), "name": "x", "server_modified_at": "2026-01-01T00:00:00Z"}
+    assert Plant.model_validate(body).extensions == []
+    assert Plant.model_validate({**body, "extensions": ["IESK", "nope", "IESK"]}).extensions == [
+        PlantExtensionType.IESK
+    ]

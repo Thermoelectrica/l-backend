@@ -1,11 +1,12 @@
 -- name: get_by_id(id)^
 -- Get plant by ID
--- external_plant_type is derived from lesiv.iesk_plant (read-only for clients)
+-- extensions are the enabled lesiv.plant_extension flags (read-only for clients)
 SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at,
     p.created_by_user_id,
-    CASE WHEN ip.plant_id IS NOT NULL THEN 'iesk' END AS external_plant_type
+    ARRAY(
+        SELECT pe.extension_type::text FROM lesiv.plant_extension pe WHERE pe.plant_id = p.id ORDER BY pe.extension_type
+    ) AS extensions
 FROM lesiv.plant p
-    LEFT JOIN lesiv.iesk_plant ip ON ip.plant_id = p.id
 WHERE p.id = :id;
 
 -- name: get_by_id_with_username(id)^
@@ -44,12 +45,13 @@ WHERE id = :facility_id;
 -- name: get_all_plants(modified_since)
 -- Get all plants (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return plants modified after that timestamp
--- external_plant_type is derived from lesiv.iesk_plant (read-only for clients)
+-- extensions are the enabled lesiv.plant_extension flags (read-only for clients)
 SELECT p.id, p.name, p.is_deleted, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.server_modified_at,
     p.created_by_user_id,
-    CASE WHEN ip.plant_id IS NOT NULL THEN 'iesk' END AS external_plant_type
+    ARRAY(
+        SELECT pe.extension_type::text FROM lesiv.plant_extension pe WHERE pe.plant_id = p.id ORDER BY pe.extension_type
+    ) AS extensions
 FROM lesiv.plant p
-    LEFT JOIN lesiv.iesk_plant ip ON ip.plant_id = p.id
 WHERE p.server_modified_at > :modified_since
 ORDER BY p.server_modified_at;
 

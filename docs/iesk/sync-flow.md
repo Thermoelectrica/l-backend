@@ -1,31 +1,30 @@
 # IESK: схема взаимодействия l-mobile → l-backend
 
-Дополнение к [backend-plan.md](backend-plan.md) и [mobile-implementation.md](mobile-implementation.md). Все схемы — mermaid.
+Дополнение к [api-contract.md](api-contract.md). Все схемы — mermaid.
 
 ## 1. Модель данных
 
 ```mermaid
 erDiagram
-    PLANT ||--o| IESK_PLANT : "признак (1:1, FK)"
+    PLANT ||--o{ PLANT_EXTENSION : "флаги расширений (FK)"
     PLANT ||--o{ FACILITY : ""
     FACILITY ||--o{ EQUIPMENT : ""
     EQUIPMENT ||..o{ IESK_INSPECTION : "equipment_id (без FK)"
     INSPECTOR ||--o{ IESK_INSPECTION : "inspector_id (FK)"
-    IESK_INSPECTION ||--o{ IESK_IMAGE : "iesk_inspection_id (FK)"
-    IMAGE ||..o{ IESK_IMAGE : "image_id (без FK)"
+    IESK_INSPECTION ||--o{ IESK_INSPECTION_IMAGE_LINK : "iesk_inspection_id (FK)"
+    IMAGE ||..o{ IESK_INSPECTION_IMAGE_LINK : "image_id (без FK)"
     PLANT ||..o{ IMAGE : "plant_id (без FK)"
 
-    IESK_PLANT {
+    PLANT_EXTENSION {
         uuid plant_id PK
+        plant_extension_type extension_type PK "IESK, ..."
         timestamptz created_at
     }
     IESK_INSPECTION {
         uuid id PK
         uuid equipment_id
         int inspector_id FK
-        timestamptz started_at
-        timestamptz completed_at
-        inspection_status status "PLANNED / IN_PROGRESS / COMPLETED"
+        timestamptz created_at "задаёт клиент, не меняется"
         int oil_level
         int bugs
         int dimensions
@@ -35,16 +34,16 @@ erDiagram
         bool is_deleted
         timestamptz server_modified_at
     }
-    IESK_IMAGE {
-        uuid iesk_inspection_id PK
+    IESK_INSPECTION_IMAGE_LINK {
         uuid image_id PK
+        uuid iesk_inspection_id PK
         bool is_deleted
     }
 ```
 
-Агрегаты: **Plant** (+`iesk_plant`), **IeskInspection** (корень + `iesk_image`), **Image** (без изменений, файл в S3).
+Агрегаты: **Plant** (+`plant_extension`), **IeskInspection** (корень + `iesk_inspection_image_link`), **Image** (без изменений, файл в S3).
 
-## 2. Как mobile узнаёт тип станции
+## 2. Как mobile узнаёт расширения станции
 
 ```mermaid
 sequenceDiagram
@@ -54,21 +53,21 @@ sequenceDiagram
     participant API as l-backend
     participant M as l-mobile
 
-    Admin->>DB: mark_iesk_plant.sql: INSERT iesk_plant + UPDATE plant.server_modified_at (один запрос, без триггеров)
+    Admin->>DB: INSERT INTO plant_extension (plant_id, 'IESK') вручную, без триггеров
 
     Note over M: обновление списка станций (PlantMetadataRepository), всегда полный список
     M->>API: GET /plant/all
-    API->>DB: plant LEFT JOIN iesk_plant
-    API-->>M: items[]: {..., external_plant_type: "iesk"}
-    M->>M: plant_metadata.external_plant_type = "iesk" (источник истины для UI)
+    API->>DB: plant + ARRAY(SELECT extension_type FROM plant_extension)
+    API-->>M: items[]: {..., extensions: ["IESK"]}
+    M->>M: plant_metadata.extensions = ["IESK"] (источник истины для UI)
 
     Note over M: синхронизация станции (PlantSynchronizer)
     M->>API: GET /plant/by_id/{id}
-    API-->>M: Plant {..., server_modified_at: новый, external_plant_type: "iesk"}
-    M->>M: метка изменилась → локальная plant перезаписана
+    API-->>M: Plant {..., extensions: ["IESK"]}
+    M->>M: локальная plant перезаписывается, только если изменился server_modified_at
 ```
 
-Основной канал — шаг 3–5: mobile запрашивает `/plant/all` целиком (`modifiedSince = null`) и перезаписывает поля `plant_metadata` без сравнения меток, поэтому признак доходит, даже если станцию разметили простым `INSERT` без сдвига метки. Сдвиг метки в скрипте разметки нужен только для того, чтобы шаг 9 обновил и локальную копию `plant`.
+Основной канал — шаги 2–5: mobile запрашивает `/plant/all` целиком (`modifiedSince = null`) и перезаписывает поля `plant_metadata` без сравнения меток. Поэтому включённое расширение доходит до устройства, даже если `server_modified_at` станции при этом не менялся. Локальная копия `plant` обновится при следующем изменении станции, и для выбора типа осмотра она не используется.
 
 ## 3. Полный цикл синхронизации станции
 
@@ -80,7 +79,7 @@ flowchart TD
     P1 --> P2[2. Equipment<br/>/equipment/by_plant_id + PUT]
     P2 --> P3[3. Image метаданные<br/>/image/by_plant_id + PUT /image]
     P3 --> P4[4. Inspection<br/>/inspection/by_plant_id + PUT]
-    P4 --> IESK{external_plant_type<br/>== iesk?}
+    P4 --> IESK{"IESK" in<br/>extensions?}
     IESK -- да --> P4b[4b. IeskInspection<br/>/iesk-inspection/by_plant_id + PUT]
     IESK -- нет --> P5
     P4b --> P5[5. Defect]
@@ -106,22 +105,20 @@ sequenceDiagram
     participant S3 as Object Storage
 
     U->>UI: открыть оборудование на IESK-станции
-    UI->>L: plant_metadata.external_plant_type == "iesk"
-    UI->>U: экран IESK-осмотра вместо мастера шагов
+    UI->>L: "IESK" in plant_metadata.extensions
+    UI->>U: доступен экран IESK-осмотра (обычный осмотр тоже остаётся)
     U->>UI: заполнить чек-лист и комментарий
-    UI->>L: iesk_inspection(id=UUID, status=IN_PROGRESS, server_modified_at=NULL, is_dirty=1)
+    UI->>L: iesk_inspection(id=UUID, created_at=now, server_modified_at=NULL, is_dirty=1)
     U->>UI: сделать фото
     UI->>L: image(id, plant_id, sync_status=PENDING_UPLOAD, is_dirty=1) + файл
     UI->>L: iesk_image_link(iesk_inspection_id, image_id), iesk_inspection.is_dirty=1
-    U->>UI: завершить осмотр
-    UI->>L: status=COMPLETED, completed_at=now, is_dirty=1
 
     Note over SYNC,API: сеть появилась → syncPlant
     SYNC->>API: стадия 3: PUT /image {id, plant_id, ...}
     API-->>SYNC: 200 Image + presigned upload URL
     SYNC->>API: стадия 4b pull: GET /iesk-inspection/by_plant_id/{plant}?modified_since=max(local)
     API-->>SYNC: [] (нового осмотра на сервере ещё нет)
-    SYNC->>API: стадия 4b push: PUT /iesk-inspection?force=false {..., server_modified_at: started_at, image_links:[{image_id}]}
+    SYNC->>API: стадия 4b push: PUT /iesk-inspection?force=false {..., created_at, server_modified_at: created_at, image_links:[{image_id}]}
     API->>API: INSPECT, доступ к станции (тип станции не проверяется)
     API-->>SYNC: 200 IeskInspection {server_modified_at: T1}
     SYNC->>L: сохранить ответ, is_dirty=0
@@ -164,8 +161,8 @@ sequenceDiagram
 
 | Метод и путь | Тело / параметры | Ответ | Ошибки |
 |---|---|---|---|
-| `GET /plant/all` | `modified_since` | `{items:[{..., external_plant_type: "iesk"\|null}]}` | — |
-| `GET /plant/by_id/{id}` | — | `Plant {..., external_plant_type}` | 403, 404 |
+| `GET /plant/all` | `modified_since` | `{items:[{..., extensions: ["IESK"] \| []}]}` | — |
+| `GET /plant/by_id/{id}` | — | `Plant {..., extensions}` | 403, 404 |
 | `GET /iesk-inspection/by_plant_id/{plant_id}` | `modified_since` | `IeskInspection[]` | 403 |
 | `GET /iesk-inspection/by_id/{id}` | — | `IeskInspection` | 403, 404 |
 | `GET /iesk-inspection/all` | `modified_since` | `{items: IeskInspectionListItem[]}` | — |
@@ -179,9 +176,7 @@ sequenceDiagram
   "id": "0b6f…",
   "equipment_id": "9a1c…",
   "inspector_id": 7,
-  "started_at": "2026-11-19T08:30:00Z",
-  "completed_at": "2026-11-19T08:42:00Z",
-  "status": "COMPLETED",
+  "created_at": "2026-11-19T08:30:00Z",
   "oil_level": 1,
   "bugs": 0,
   "dimensions": 2,

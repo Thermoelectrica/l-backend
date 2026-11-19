@@ -14,9 +14,7 @@ from app.services.auth import AuthService
 
 PUT_BODY_TEMPLATE = {
     "inspector_id": 1,
-    "started_at": "2024-01-01T10:00:00Z",
-    "completed_at": None,
-    "status": "IN_PROGRESS",
+    "created_at": "2024-01-01T10:00:00Z",
     "oil_level": 1,
     "bugs": 0,
     "dimensions": 2,
@@ -66,11 +64,11 @@ def auth_service():
 
 @pytest_asyncio.fixture
 async def seed_iesk_plant(plant_id, seed_test_equipment):
-    """Mark the seeded test plant as an IESK plant (lesiv.iesk_plant)."""
+    """Enable the IESK extension for the seeded test plant (lesiv.plant_extension)."""
     conn = await asyncpg.connect(settings.get_database_url())
     try:
         await conn.execute(
-            "INSERT INTO lesiv.iesk_plant (plant_id) VALUES ($1) ON CONFLICT (plant_id) DO NOTHING",
+            "INSERT INTO lesiv.plant_extension (plant_id, extension_type) VALUES ($1, 'IESK') ON CONFLICT DO NOTHING",
             plant_id,
         )
     finally:
@@ -126,8 +124,9 @@ def test_create_iesk_inspection(client: TestClient, iesk_inspection_data, iesk_i
     data = response.json()
     assert data["id"] == str(iesk_inspection_id)
     assert data["equipment_id"] == str(equipment_id)
-    assert data["status"] == "IN_PROGRESS"
-    assert data["completed_at"] is None
+    assert datetime.fromisoformat(data["created_at"]) == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
+    for removed in ("status", "started_at", "completed_at"):
+        assert removed not in data
     assert data["oil_level"] == 1
     assert data["dimensions"] == 2
     assert data["comment"] == "Течь масла не обнаружена"
@@ -151,33 +150,40 @@ def test_get_nonexistent_iesk_inspection(client: TestClient):
     assert response.json()["detail"] == "IESK inspection not found"
 
 
-def test_status_defaults_to_planned(client: TestClient, iesk_inspection_data):
-    """status defaults to PLANNED when omitted, as for inspection"""
-    del iesk_inspection_data["status"]
-    response = client.put("/iesk-inspection", json=iesk_inspection_data)
-    assert response.status_code == 200
-    assert response.json()["status"] == "PLANNED"
-
-
-def test_complete_iesk_inspection(client: TestClient, iesk_inspection_data):
-    """Completing the inspection stores status COMPLETED and completed_at"""
+def test_created_at_is_kept_on_update(client: TestClient, iesk_inspection_data, iesk_inspection_id):
+    """created_at is stored on creation only: a different value in a later PUT does not change it"""
     created = client.put("/iesk-inspection", json=iesk_inspection_data).json()
 
-    created["status"] = "COMPLETED"
-    created["completed_at"] = "2024-01-01T10:30:00Z"
+    created["created_at"] = "2030-01-01T00:00:00Z"
+    created["comment"] = "changed"
     response = client.put("/iesk-inspection", json=created)
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "COMPLETED"
-    assert datetime.fromisoformat(data["completed_at"]) == datetime(2024, 1, 1, 10, 30, tzinfo=timezone.utc)
+    assert data["comment"] == "changed"
+    assert datetime.fromisoformat(data["created_at"]) == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
+
+    stored = client.get(f"/iesk-inspection/by_id/{iesk_inspection_id}").json()
+    assert datetime.fromisoformat(stored["created_at"]) == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
 
 
-def test_invalid_status_rejected(client: TestClient, iesk_inspection_data):
-    """An unknown status is rejected with 422"""
-    iesk_inspection_data["status"] = "DONE"
+def test_created_at_required(client: TestClient, iesk_inspection_data):
+    """created_at is required in PUT (422 without it)"""
+    del iesk_inspection_data["created_at"]
     response = client.put("/iesk-inspection", json=iesk_inspection_data)
     assert response.status_code == 422
     assert response.json()["type"] == "request_validation_error"
+
+
+def test_removed_fields_are_ignored(client: TestClient, iesk_inspection_data):
+    """status / started_at / completed_at no longer exist: if a client sends them they are ignored"""
+    iesk_inspection_data.update(
+        {"status": "COMPLETED", "started_at": "2024-01-01T09:00:00Z", "completed_at": "2024-01-01T11:00:00Z"}
+    )
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 200
+    data = response.json()
+    for removed in ("status", "started_at", "completed_at"):
+        assert removed not in data
 
 
 def test_update_iesk_inspection(client: TestClient, iesk_inspection_data):
@@ -331,8 +337,8 @@ def test_get_all(client: TestClient, iesk_inspection_data, iesk_inspection_id):
     assert len(items) >= 1
     item = next((x for x in items if x["id"] == str(iesk_inspection_id)), None)
     assert item is not None
-    assert item["status"] == "IN_PROGRESS"
-    assert "image_links" not in item and "comment" not in item
+    assert datetime.fromisoformat(item["created_at"]) == datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
+    assert "image_links" not in item and "comment" not in item and "status" not in item
 
 
 def test_get_all_modified_since(client: TestClient, iesk_inspection_data, iesk_inspection_id):
@@ -436,10 +442,10 @@ def test_inspect_level_can_put(client: TestClient, iesk_inspection_data, inspect
     created = response.json()
     assert created["inspector_id"] == inspect_level_inspector_id
 
-    created["status"] = "COMPLETED"
+    created["comment"] = "updated by INSPECT"
     response = client.put("/iesk-inspection", json=created, headers=headers)
     assert response.status_code == 200
-    assert response.json()["status"] == "COMPLETED"
+    assert response.json()["comment"] == "updated by INSPECT"
 
 
 def test_no_plant_access(client: TestClient, iesk_inspection_data, iesk_inspection_id, plant_id, auth_service):

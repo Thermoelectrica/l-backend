@@ -1,26 +1,35 @@
--- IESK plants and simplified IESK inspections (task #72). Design: docs/iesk/backend-plan.md.
+-- Plant extensions and simplified IESK inspections (task #72). API contract: docs/iesk/api-contract.md.
 --
--- iesk_plant           - marks a plant as an IESK plant. Part of the Plant aggregate (FK to plant is allowed).
---                        Managed by hand-written SQL (docs/iesk/verification/mark_iesk_plant.sql), the app only
---                        reads it. Exposed to clients as plant.external_plant_type = 'iesk'. No triggers.
+-- plant_extension      - feature flags of a plant: a row (plant_id, extension_type) enables the extension.
+--                        Part of the Plant aggregate (FK to plant is allowed). Managed by hand-written SQL,
+--                        the app only reads it. Exposed to clients as plant.extensions = ["IESK", ...].
+--                        No triggers.
 -- iesk_inspection      - simplified inspection aggregate root: one record = the only "step".
--- iesk_image           - links between an IESK inspection and images (image aggregate, no FK),
+-- iesk_inspection_image_link - links between an IESK inspection and images (image aggregate, no FK),
 --                        analogous to inspection_image_link.
 
 -- ============================================================================
--- Plant extension: IESK marker
+-- Plant extensions
 -- ============================================================================
 
--- 1:1 extension of plant, so the PK is plant_id (not id) - same exception as for many-to-many tables.
-CREATE TABLE lesiv.iesk_plant (
-    plant_id UUID PRIMARY KEY,
+-- Mirrored by app.models.plant.PlantExtensionType. A new value needs its own migration
+-- (ALTER TYPE ... ADD VALUE cannot be used in the transaction that adds it) and a new enum member.
+CREATE TYPE lesiv.plant_extension_type AS ENUM (
+    'IESK'  -- simplified IESK inspections (/iesk-inspection)
+);
+
+-- Flag table: both columns form the PK, so there is no id (same exception as for many-to-many tables).
+CREATE TABLE lesiv.plant_extension (
+    plant_id UUID NOT NULL,
+    extension_type lesiv.plant_extension_type NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_iesk_plant_plant
+    PRIMARY KEY (plant_id, extension_type),
+    CONSTRAINT fk_plant_extension_plant
         FOREIGN KEY (plant_id) REFERENCES lesiv.plant(id)
 );
 
-COMMENT ON TABLE lesiv.iesk_plant IS
-    'Plants that use the simplified IESK inspection procedure. Exposed to clients as plant.external_plant_type = ''iesk''.';
+COMMENT ON TABLE lesiv.plant_extension IS
+    'Extensions enabled for a plant (feature flags). Exposed to clients as plant.extensions.';
 
 -- ============================================================================
 -- IESK Inspection Aggregate
@@ -30,10 +39,9 @@ CREATE TABLE lesiv.iesk_inspection (
     id UUID PRIMARY KEY,
     equipment_id UUID NOT NULL,  -- Reference to equipment (no FK between aggregates)
     inspector_id INTEGER NOT NULL,
-    started_at TIMESTAMPTZ NOT NULL,
-    completed_at TIMESTAMPTZ,
-    -- Same enum and lifecycle as lesiv.inspection
-    status lesiv.inspection_status NOT NULL DEFAULT 'PLANNED',
+    -- When the inspection was created on the device (set by the client, offline-first).
+    -- Written on insert only, later PUTs do not change it.
+    created_at TIMESTAMPTZ NOT NULL,
     -- Checklist marks. Nullable: an inspection is created on the device before it is filled in.
     oil_level INTEGER,
     bugs INTEGER,
@@ -49,17 +57,17 @@ CREATE TABLE lesiv.iesk_inspection (
 
 CREATE INDEX idx_iesk_inspection_equipment ON lesiv.iesk_inspection(equipment_id);
 CREATE INDEX idx_iesk_inspection_inspector ON lesiv.iesk_inspection(inspector_id);
-CREATE INDEX idx_iesk_inspection_status ON lesiv.iesk_inspection(status);
 CREATE INDEX idx_iesk_inspection_server_modified_at ON lesiv.iesk_inspection(server_modified_at);
 
--- Link table (child of iesk_inspection). Logical deletion like inspection_image_link.
-CREATE TABLE lesiv.iesk_image (
-    iesk_inspection_id UUID NOT NULL,
+-- Link table (child of iesk_inspection), same layout as inspection_image_link. Logical deletion.
+CREATE TABLE lesiv.iesk_inspection_image_link (
     image_id UUID NOT NULL,  -- Reference to image (no FK between aggregates)
+    iesk_inspection_id UUID NOT NULL,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    PRIMARY KEY (iesk_inspection_id, image_id),
-    CONSTRAINT fk_iesk_image_iesk_inspection
+    PRIMARY KEY (image_id, iesk_inspection_id),
+    CONSTRAINT fk_iesk_inspection_image_link_iesk_inspection
         FOREIGN KEY (iesk_inspection_id) REFERENCES lesiv.iesk_inspection(id)
 );
 
-CREATE INDEX idx_iesk_image_image ON lesiv.iesk_image(image_id);
+CREATE INDEX idx_iesk_inspection_image_link_iesk_inspection
+    ON lesiv.iesk_inspection_image_link(iesk_inspection_id);

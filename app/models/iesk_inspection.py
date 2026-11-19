@@ -1,6 +1,6 @@
 """IESK inspection aggregate models.
 
-A simplified inspection for plants listed in lesiv.iesk_plant (plant.external_plant_type = "iesk").
+A simplified inspection for plants with the IESK extension (lesiv.plant_extension, plant.extensions).
 There are no steps: the record itself is the only step. Images are linked the same way as to an
 inspection step (see ImageLink in app.models.inspection).
 """
@@ -10,8 +10,6 @@ from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from app.models.inspection import InspectionStatus
 
 
 class IeskImageLink(BaseModel):
@@ -29,9 +27,8 @@ class IeskInspection(BaseModel):
     id: UUID
     equipment_id: UUID
     inspector_id: int
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    status: InspectionStatus = InspectionStatus.PLANNED
+    # When the inspection was created on the device. Stored on creation only, later values are ignored.
+    created_at: datetime
     # Checklist marks
     oil_level: Optional[int] = None
     bugs: Optional[int] = None
@@ -50,9 +47,7 @@ class IeskInspectionListItem(BaseModel):
     id: UUID
     equipment_id: UUID
     inspector_id: int
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    status: InspectionStatus
+    created_at: datetime
     is_deleted: bool
     server_modified_at: datetime
 

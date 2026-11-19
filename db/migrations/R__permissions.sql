@@ -24,6 +24,8 @@ GRANT USAGE ON TYPE lesiv.sticker_event_kind TO l_app_role;
 GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
 -- Added in V23__rename_equipment_properties_to_entity_property.sql
 GRANT USAGE ON TYPE lesiv.entity_type TO l_app_role;
+-- Added in V24__iesk_inspection.sql
+GRANT USAGE ON TYPE lesiv.plant_extension_type TO l_app_role;
 
 -- ============================================================================
 -- Plant permissions
@@ -143,14 +145,14 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.inspection_image_link TO l_app_role;
 -- IESK (V24__iesk_inspection.sql)
 -- ============================================================================
 
--- iesk_plant: SELECT only (managed by hand-written SQL, the app only reads the marker)
-GRANT SELECT ON lesiv.iesk_plant TO l_app_role;
+-- plant_extension: SELECT only (managed by hand-written SQL, the app only reads the flags)
+GRANT SELECT ON lesiv.plant_extension TO l_app_role;
 
 -- iesk_inspection: SELECT, INSERT, UPDATE (logical deletion only)
 GRANT SELECT, INSERT, UPDATE ON lesiv.iesk_inspection TO l_app_role;
 
--- iesk_image: SELECT, INSERT, UPDATE (logical deletion only)
-GRANT SELECT, INSERT, UPDATE ON lesiv.iesk_image TO l_app_role;
+-- iesk_inspection_image_link: SELECT, INSERT, UPDATE (logical deletion only)
+GRANT SELECT, INSERT, UPDATE ON lesiv.iesk_inspection_image_link TO l_app_role;
 
 -- ============================================================================
 -- Image Aggregate

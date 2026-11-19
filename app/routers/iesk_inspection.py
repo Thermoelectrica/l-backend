@@ -1,4 +1,4 @@
-"""IESK inspection router - simplified inspections for plants listed in lesiv.iesk_plant"""
+"""IESK inspection router - simplified inspections for plants with the IESK extension (lesiv.plant_extension)"""
 
 import logging
 from datetime import datetime
@@ -94,7 +94,7 @@ async def upsert_iesk_inspection(
     - Permission: INSPECT access level and access to the plant of the equipment
       (and to the plant the inspection currently belongs to, if it exists)
     - The plant type is not checked: the client decides which inspection to create from
-      plant.external_plant_type. No plant claim is required.
+      plant.extensions (contains "IESK"). No plant claim is required.
     """
     try:
         async with conn.transaction():
