@@ -42,7 +42,10 @@ class PlantRepository:
             facility = Facility(**facility_row, equipment_ids=equipment_ids)
             facilities.append(facility)
 
-        return Plant(**plant_row, facilities=facilities)
+        sticker_type_rows = [row async for row in queries.get_sticker_type_ids(conn, plant_id=plant_id)]
+        sticker_type_ids = [row["sticker_type_id"] for row in sticker_type_rows]
+
+        return Plant(**plant_row, facilities=facilities, sticker_type_ids=sticker_type_ids)
 
     async def get_all(self, conn, modified_since: datetime = DEFAULT_MODIFIED_SINCE) -> PlantListResponse:
         """Get all plants as lightweight list, optionally filtered by modification date"""
@@ -98,6 +101,11 @@ class PlantRepository:
 
         # Synchronize facilities
         await self._sync_facilities(conn, plant_id, plant.facilities, force)
+
+        # Older clients do not send this field. Preserve their configured
+        # restriction instead of treating the missing field as an empty list.
+        if plant.sticker_type_ids is not None:
+            await self._sync_sticker_type_ids(conn, plant_id, plant.sticker_type_ids)
 
         # Return updated aggregate
         result = await self.get_by_id(conn, plant_id)
@@ -205,3 +213,23 @@ class PlantRepository:
         to_delete = existing_ids - incoming_ids
         for facility_id in to_delete:
             await queries.mark_facility_deleted(conn, id=facility_id)
+
+    async def _sync_sticker_type_ids(self, conn, plant_id: UUID, incoming_sticker_type_ids: list[int]) -> None:
+        """Synchronize explicitly permitted sticker types for a plant."""
+        current_rows = [row async for row in queries.get_sticker_type_ids(conn, plant_id=plant_id)]
+        current_ids = {row["sticker_type_id"] for row in current_rows}
+        incoming_ids = set(incoming_sticker_type_ids)
+
+        for sticker_type_id in current_ids - incoming_ids:
+            await queries.delete_plant_sticker_type(
+                conn,
+                plant_id=plant_id,
+                sticker_type_id=sticker_type_id,
+            )
+
+        for sticker_type_id in incoming_ids - current_ids:
+            await queries.upsert_plant_sticker_type(
+                conn,
+                plant_id=plant_id,
+                sticker_type_id=sticker_type_id,
+            )

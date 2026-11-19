@@ -24,7 +24,7 @@ GRANT USAGE ON TYPE lesiv.sticker_event_kind TO l_app_role;
 GRANT USAGE ON TYPE lesiv.sticker_color  TO l_app_role;
 -- Added in V23__rename_equipment_properties_to_entity_property.sql
 GRANT USAGE ON TYPE lesiv.entity_type TO l_app_role;
--- Added in V24__iesk_inspection.sql
+-- Added in V25__iesk_inspection.sql
 GRANT USAGE ON TYPE lesiv.plant_extension_type TO l_app_role;
 
 -- ============================================================================
@@ -108,6 +108,9 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.plant TO l_app_role;
 -- facility: SELECT, INSERT, UPDATE 
 GRANT SELECT, INSERT, UPDATE ON lesiv.facility TO l_app_role;
 
+-- plant_sticker_type: relation rows are synchronized by deleting and inserting
+GRANT SELECT, INSERT, DELETE ON lesiv.plant_sticker_type TO l_app_role;
+
 -- ============================================================================
 -- Equipment Aggregate
 -- ============================================================================
@@ -142,7 +145,7 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.inspection_step TO l_app_role;
 GRANT SELECT, INSERT, UPDATE ON lesiv.inspection_image_link TO l_app_role;
 
 -- ============================================================================
--- IESK (V24__iesk_inspection.sql)
+-- IESK (V25__iesk_inspection.sql)
 -- ============================================================================
 
 -- plant_extension: SELECT only (managed by hand-written SQL, the app only reads the flags)

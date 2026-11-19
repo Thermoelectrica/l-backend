@@ -46,6 +46,9 @@ class Plant(BaseModel):
     # Enabled extensions from lesiv.plant_extension. Read-only: never written from a request body,
     # any client value is ignored. Empty for ordinary plants.
     extensions: list[PlantExtensionType] = Field(default_factory=list)
+    # None means the PUT client did not send a restriction. An empty list means
+    # that no restriction is configured and all sticker types are permitted.
+    sticker_type_ids: Optional[list[int]] | None = None
     facilities: list[Facility] = Field(default_factory=list)
 
     @field_validator("extensions", mode="before")
