@@ -739,3 +739,71 @@ def test_created_by_user_id_null_for_anonymous_create(client: TestClient, plant_
     get_response = client.get(f"/plant/by_id/{plant_id}")
     assert get_response.status_code == 200
     assert get_response.json()["created_by_user_id"] is None
+
+
+# ============================================================================
+# external_plant_type (derived from lesiv.iesk_plant)
+# ============================================================================
+
+
+async def _mark_iesk(plant_id):
+    """Mark a plant as IESK directly in the DB (the app never writes lesiv.iesk_plant)"""
+    import asyncpg
+
+    from app.config import settings
+
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        await conn.execute(
+            "INSERT INTO lesiv.iesk_plant (plant_id) VALUES ($1) ON CONFLICT (plant_id) DO NOTHING", plant_id
+        )
+    finally:
+        await conn.close()
+
+
+def test_external_plant_type_null_for_regular_plant(client: TestClient, plant_data, plant_id):
+    """Ordinary plants expose external_plant_type = null in by_id and all"""
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["external_plant_type"] is None
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert "external_plant_type" in item
+    assert item["external_plant_type"] is None
+
+
+async def test_external_plant_type_iesk(client: TestClient, plant_data, plant_id):
+    """A plant listed in lesiv.iesk_plant exposes external_plant_type = 'iesk' in by_id and all"""
+    client.put("/plant", json=plant_data)
+    await _mark_iesk(plant_id)
+
+    response = client.get(f"/plant/by_id/{plant_id}")
+    assert response.status_code == 200
+    assert response.json()["external_plant_type"] == "iesk"
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert item["external_plant_type"] == "iesk"
+
+
+async def test_external_plant_type_is_read_only(client: TestClient, plant_data, plant_id):
+    """external_plant_type sent by the client in PUT /plant is ignored in both directions"""
+    created = client.put("/plant", json=plant_data).json()
+
+    # A client cannot mark a plant as IESK
+    created["external_plant_type"] = "iesk"
+    updated = client.put("/plant", json=created).json()
+    assert updated["external_plant_type"] is None
+
+    # ... nor clear the marker (old clients omit the field, new ones may send null)
+    await _mark_iesk(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    current["external_plant_type"] = None
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["external_plant_type"] == "iesk"
+
+    del current["external_plant_type"]
+    current["server_modified_at"] = response.json()["server_modified_at"]
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["external_plant_type"] == "iesk"

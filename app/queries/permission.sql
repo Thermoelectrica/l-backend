@@ -45,6 +45,14 @@ JOIN lesiv.equipment e ON i.equipment_id = e.id
 JOIN lesiv.facility f ON e.facility_id = f.id
 WHERE i.id = :inspection_id;
 
+-- name: get_plant_from_iesk_inspection(iesk_inspection_id)^
+-- Get plant_id from iesk_inspection_id
+SELECT f.plant_id
+FROM lesiv.iesk_inspection ii
+JOIN lesiv.equipment e ON ii.equipment_id = e.id
+JOIN lesiv.facility f ON e.facility_id = f.id
+WHERE ii.id = :iesk_inspection_id;
+
 -- name: get_plant_from_defect(defect_id)^
 -- Get plant_id from defect_id
 SELECT f.plant_id

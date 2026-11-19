@@ -1,9 +1,12 @@
 -- name: get_by_id(id)^
 -- Get plant by ID
-SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at,
-    created_by_user_id
-FROM lesiv.plant
-WHERE id = :id;
+-- external_plant_type is derived from lesiv.iesk_plant (read-only for clients)
+SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at,
+    p.created_by_user_id,
+    CASE WHEN ip.plant_id IS NOT NULL THEN 'iesk' END AS external_plant_type
+FROM lesiv.plant p
+    LEFT JOIN lesiv.iesk_plant ip ON ip.plant_id = p.id
+WHERE p.id = :id;
 
 -- name: get_by_id_with_username(id)^
 -- Get plant by ID with username of user who claimed it
@@ -41,11 +44,14 @@ WHERE id = :facility_id;
 -- name: get_all_plants(modified_since)
 -- Get all plants (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return plants modified after that timestamp
-SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at,
-    created_by_user_id
-FROM lesiv.plant
-WHERE server_modified_at > :modified_since
-ORDER BY server_modified_at;
+-- external_plant_type is derived from lesiv.iesk_plant (read-only for clients)
+SELECT p.id, p.name, p.is_deleted, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.server_modified_at,
+    p.created_by_user_id,
+    CASE WHEN ip.plant_id IS NOT NULL THEN 'iesk' END AS external_plant_type
+FROM lesiv.plant p
+    LEFT JOIN lesiv.iesk_plant ip ON ip.plant_id = p.id
+WHERE p.server_modified_at > :modified_since
+ORDER BY p.server_modified_at;
 
 -- name: upsert_plant(id, name, is_deleted, server_modified_at, created_by_user_id)!
 -- Insert or update plant (claim fields are managed separately via claim/release endpoints)

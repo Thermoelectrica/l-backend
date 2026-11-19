@@ -1,12 +1,19 @@
 """Plant aggregate models"""
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, computed_field
 
 from app.utils.claim_utils import is_claim_stale
+
+
+class ExternalPlantType(str, Enum):
+    """Kind of externally managed plant. Tells the client which inspection procedure is available."""
+
+    IESK = "iesk"  # Plant is listed in lesiv.iesk_plant -> IESK inspections (/iesk-inspection)
 
 
 # Read models (returned from GET endpoints)
@@ -32,6 +39,9 @@ class Plant(BaseModel):
     claimed_at: Optional[datetime] = None
     is_deleted: bool = False
     server_modified_at: datetime
+    # Derived by the server from lesiv.iesk_plant, never written from a request body - any client value is ignored.
+    # None for ordinary plants.
+    external_plant_type: Optional[ExternalPlantType] = None
     facilities: list[Facility] = Field(default_factory=list)
 
     @computed_field
@@ -56,6 +66,8 @@ class PlantListItem(BaseModel):
     claimed_at: Optional[datetime] = None
     is_deleted: bool = False
     server_modified_at: datetime
+    # Derived by the server from lesiv.iesk_plant. None for ordinary plants.
+    external_plant_type: Optional[ExternalPlantType] = None
 
     @computed_field
     @property

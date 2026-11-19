@@ -140,6 +140,19 @@ GRANT SELECT, INSERT, UPDATE ON lesiv.inspection_step TO l_app_role;
 GRANT SELECT, INSERT, UPDATE ON lesiv.inspection_image_link TO l_app_role;
 
 -- ============================================================================
+-- IESK (V24__iesk_inspection.sql)
+-- ============================================================================
+
+-- iesk_plant: SELECT only (managed by hand-written SQL, the app only reads the marker)
+GRANT SELECT ON lesiv.iesk_plant TO l_app_role;
+
+-- iesk_inspection: SELECT, INSERT, UPDATE (logical deletion only)
+GRANT SELECT, INSERT, UPDATE ON lesiv.iesk_inspection TO l_app_role;
+
+-- iesk_image: SELECT, INSERT, UPDATE (logical deletion only)
+GRANT SELECT, INSERT, UPDATE ON lesiv.iesk_image TO l_app_role;
+
+-- ============================================================================
 -- Image Aggregate
 -- ============================================================================
 
