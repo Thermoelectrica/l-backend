@@ -805,3 +805,101 @@ def test_created_by_user_id_null_for_anonymous_create(client: TestClient, plant_
     get_response = client.get(f"/plant/by_id/{plant_id}")
     assert get_response.status_code == 200
     assert get_response.json()["created_by_user_id"] is None
+
+
+# ============================================================================
+# extensions (enabled lesiv.plant_extension flags)
+# ============================================================================
+
+
+async def _enable_extension(plant_id, extension_type="IESK"):
+    """Enable a plant extension directly in the DB (the app never writes lesiv.plant_extension)"""
+    import asyncpg
+
+    from app.config import settings
+
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        await conn.execute(
+            "INSERT INTO lesiv.plant_extension (plant_id, extension_type) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            plant_id,
+            extension_type,
+        )
+    finally:
+        await conn.close()
+
+
+def test_extensions_empty_for_regular_plant(client: TestClient, plant_data, plant_id):
+    """Ordinary plants expose extensions = [] in by_id and all"""
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == []
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert item["extensions"] == []
+
+
+async def test_extensions_iesk(client: TestClient, plant_data, plant_id):
+    """A plant with the IESK row in lesiv.plant_extension exposes extensions = ['IESK'] in by_id and all"""
+    client.put("/plant", json=plant_data)
+    await _enable_extension(plant_id)
+
+    response = client.get(f"/plant/by_id/{plant_id}")
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert item["extensions"] == ["IESK"]
+
+
+async def test_extensions_are_read_only(client: TestClient, plant_data, plant_id):
+    """extensions sent by the client in PUT /plant are ignored in both directions"""
+    created = client.put("/plant", json=plant_data).json()
+
+    # A client cannot enable an extension
+    created["extensions"] = ["IESK"]
+    updated = client.put("/plant", json=created).json()
+    assert updated["extensions"] == []
+
+    # ... nor disable it (old clients omit the field, new ones may send an empty list)
+    await _enable_extension(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    current["extensions"] = []
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+    del current["extensions"]
+    current["server_modified_at"] = response.json()["server_modified_at"]
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+
+async def test_unknown_extensions_dropped(client: TestClient, plant_data, plant_id):
+    """Unknown extensions or garbage in PUT /plant are dropped instead of failing the request with 422"""
+    plant_data["extensions"] = ["SOME_FUTURE_EXTENSION"]
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == []
+
+    # The stored flags are not affected by whatever the client sends
+    await _enable_extension(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    for value in (["SOME_FUTURE_EXTENSION"], ["iesk", "IESK", "IESK"], "IESK", None, [123]):
+        current["extensions"] = value
+        response = client.put("/plant", json=current)
+        assert response.status_code == 200, value
+        assert response.json()["extensions"] == ["IESK"]
+        current["server_modified_at"] = response.json()["server_modified_at"]
+
+
+def test_extensions_validator_dedupes_and_filters():
+    """The input validator keeps known extensions once, in order, and drops everything else"""
+    from app.models.plant import Plant, PlantExtensionType
+
+    body = {"id": str(uuid4()), "name": "x", "server_modified_at": "2026-01-01T00:00:00Z"}
+    assert Plant.model_validate(body).extensions == []
+    assert Plant.model_validate({**body, "extensions": ["IESK", "nope", "IESK"]}).extensions == [
+        PlantExtensionType.IESK
+    ]

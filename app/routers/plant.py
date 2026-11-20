@@ -87,6 +87,7 @@ async def upsert_plant(
     - New plants become accessible to all active internal inspectors with MODIFY access
       level or higher, plus the creator (who may be external)
     - created_by_user_id is set by the server on creation and cannot be changed by clients
+    - extensions is read-only: it lists the lesiv.plant_extension flags, any client value is ignored
     """
     try:
         async with conn.transaction():
