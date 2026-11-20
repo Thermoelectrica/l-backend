@@ -20,6 +20,7 @@ PUT_BODY_TEMPLATE = {
     "dimensions": 2,
     "locks": 1,
     "stickers": 3,
+    "safety_signs": 4,
     "comment": "Течь масла не обнаружена",
     "is_deleted": False,
     "server_modified_at": "2024-01-01T10:00:00Z",
@@ -129,6 +130,7 @@ def test_create_iesk_inspection(client: TestClient, iesk_inspection_data, iesk_i
         assert removed not in data
     assert data["oil_level"] == 1
     assert data["dimensions"] == 2
+    assert data["safety_signs"] == 4
     assert data["comment"] == "Течь масла не обнаружена"
     assert data["image_links"] == []
     assert data["server_modified_at"] != iesk_inspection_data["server_modified_at"]
@@ -192,11 +194,13 @@ def test_update_iesk_inspection(client: TestClient, iesk_inspection_data):
 
     created["comment"] = "Обновлено"
     created["bugs"] = 5
+    created["safety_signs"] = 0
     response = client.put("/iesk-inspection", json=created)
     assert response.status_code == 200
     data = response.json()
     assert data["comment"] == "Обновлено"
     assert data["bugs"] == 5
+    assert data["safety_signs"] == 0
     assert data["server_modified_at"] != created["server_modified_at"]
 
 
@@ -214,12 +218,23 @@ def test_logical_delete_iesk_inspection(client: TestClient, iesk_inspection_data
 
 def test_nullable_checklist(client: TestClient, iesk_inspection_data):
     """Checklist marks and comment may be empty (inspection created before being filled in)"""
-    for field in ("oil_level", "bugs", "dimensions", "locks", "stickers", "comment"):
+    for field in ("oil_level", "bugs", "dimensions", "locks", "stickers", "safety_signs", "comment"):
         iesk_inspection_data[field] = None
     response = client.put("/iesk-inspection", json=iesk_inspection_data)
     assert response.status_code == 200
     data = response.json()
-    assert data["oil_level"] is None and data["comment"] is None
+    assert data["oil_level"] is None and data["safety_signs"] is None and data["comment"] is None
+
+
+def test_safety_signs_optional(client: TestClient, iesk_inspection_data, iesk_inspection_id):
+    """safety_signs may be omitted (clients that predate the field): it is stored as null"""
+    del iesk_inspection_data["safety_signs"]
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 200
+    assert response.json()["safety_signs"] is None
+
+    stored = client.get(f"/iesk-inspection/by_id/{iesk_inspection_id}").json()
+    assert stored["safety_signs"] is None
 
 
 # ============================================================================

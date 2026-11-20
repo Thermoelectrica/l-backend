@@ -30,6 +30,7 @@ erDiagram
         int dimensions
         int locks
         int stickers
+        int safety_signs
         text comment
         bool is_deleted
         timestamptz server_modified_at
@@ -182,6 +183,7 @@ sequenceDiagram
   "dimensions": 2,
   "locks": 1,
   "stickers": 3,
+  "safety_signs": 1,
   "comment": "Течь масла не обнаружена",
   "is_deleted": false,
   "server_modified_at": "2026-11-19T08:31:12.345Z",

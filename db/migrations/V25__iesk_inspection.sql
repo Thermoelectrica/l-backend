@@ -48,6 +48,7 @@ CREATE TABLE lesiv.iesk_inspection (
     dimensions INTEGER,
     locks INTEGER,
     stickers INTEGER,
+    safety_signs INTEGER,
     comment TEXT,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     server_modified_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

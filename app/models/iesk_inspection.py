@@ -35,6 +35,7 @@ class IeskInspection(BaseModel):
     dimensions: Optional[int] = None
     locks: Optional[int] = None
     stickers: Optional[int] = None
+    safety_signs: Optional[int] = None
     comment: Optional[str] = None
     is_deleted: bool = False
     server_modified_at: datetime

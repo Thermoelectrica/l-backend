@@ -14,7 +14,7 @@ ORDER BY ii.server_modified_at;
 -- name: get_by_id(id)^
 -- Get IESK inspection by ID
 SELECT id, equipment_id, inspector_id, created_at, oil_level, bugs, dimensions, locks,
-       stickers, comment, is_deleted, server_modified_at
+       stickers, safety_signs, comment, is_deleted, server_modified_at
 FROM lesiv.iesk_inspection
 WHERE id = :id;
 
@@ -22,7 +22,7 @@ WHERE id = :id;
 -- Get all IESK inspections for plant (full data for aggregates)
 -- :modified_since defaults to 1790-01-01 - only return inspections modified after that timestamp
 SELECT ii.id, ii.equipment_id, ii.inspector_id, ii.created_at, ii.oil_level, ii.bugs,
-       ii.dimensions, ii.locks, ii.stickers, ii.comment, ii.is_deleted, ii.server_modified_at
+       ii.dimensions, ii.locks, ii.stickers, ii.safety_signs, ii.comment, ii.is_deleted, ii.server_modified_at
 FROM lesiv.iesk_inspection ii
 JOIN lesiv.equipment e ON ii.equipment_id = e.id
 JOIN lesiv.facility f ON e.facility_id = f.id
@@ -48,13 +48,14 @@ WHERE f.plant_id = :plant_id
   AND ii.server_modified_at > :modified_since
 ORDER BY il.iesk_inspection_id, il.image_id;
 
--- name: upsert_iesk_inspection(id, equipment_id, inspector_id, created_at, oil_level, bugs, dimensions, locks, stickers, comment, is_deleted, server_modified_at)!
+-- name: upsert_iesk_inspection(id, equipment_id, inspector_id, created_at, oil_level, bugs, dimensions, locks, stickers, safety_signs, comment, is_deleted, server_modified_at)!
 -- Insert or update IESK inspection
 -- created_at is intentionally absent from DO UPDATE: it is set once on creation and never changed afterwards.
 INSERT INTO lesiv.iesk_inspection (id, equipment_id, inspector_id, created_at, oil_level,
-                                   bugs, dimensions, locks, stickers, comment, is_deleted, server_modified_at)
+                                   bugs, dimensions, locks, stickers, safety_signs, comment, is_deleted,
+                                   server_modified_at)
 VALUES (:id, :equipment_id, :inspector_id, :created_at, :oil_level,
-        :bugs, :dimensions, :locks, :stickers, :comment, :is_deleted, :server_modified_at)
+        :bugs, :dimensions, :locks, :stickers, :safety_signs, :comment, :is_deleted, :server_modified_at)
 ON CONFLICT (id) DO UPDATE SET
     equipment_id = EXCLUDED.equipment_id,
     inspector_id = EXCLUDED.inspector_id,
@@ -63,6 +64,7 @@ ON CONFLICT (id) DO UPDATE SET
     dimensions = EXCLUDED.dimensions,
     locks = EXCLUDED.locks,
     stickers = EXCLUDED.stickers,
+    safety_signs = EXCLUDED.safety_signs,
     comment = EXCLUDED.comment,
     is_deleted = EXCLUDED.is_deleted,
     server_modified_at = EXCLUDED.server_modified_at;

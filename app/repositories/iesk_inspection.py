@@ -125,6 +125,7 @@ class IeskInspectionRepository:
             dimensions=inspection.dimensions,
             locks=inspection.locks,
             stickers=inspection.stickers,
+            safety_signs=inspection.safety_signs,
             comment=inspection.comment,
             is_deleted=inspection.is_deleted,
             server_modified_at=datetime.now(timezone.utc),
