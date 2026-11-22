@@ -155,6 +155,19 @@ class PermissionService:
         result = await queries.get_plant_from_inspection(self.conn, inspection_id=inspection_id)
         return result["plant_id"] if result else None
 
+    async def get_plant_id_from_iesk_inspection(self, iesk_inspection_id: UUID) -> Optional[UUID]:
+        """
+        Get plant_id from iesk_inspection_id.
+
+        Args:
+            iesk_inspection_id: UUID of the IESK inspection
+
+        Returns:
+            UUID of the plant, or None if not found
+        """
+        result = await queries.get_plant_from_iesk_inspection(self.conn, iesk_inspection_id=iesk_inspection_id)
+        return result["plant_id"] if result else None
+
     async def get_plant_id_from_defect(self, defect_id: UUID) -> Optional[UUID]:
         """
         Get plant_id from defect_id.

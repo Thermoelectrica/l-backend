@@ -1,9 +1,13 @@
 -- name: get_by_id(id)^
 -- Get plant by ID
-SELECT id, name, claimed_by_device_id, claimed_by_user_id, claimed_at, is_deleted, server_modified_at,
-    created_by_user_id
-FROM lesiv.plant
-WHERE id = :id;
+-- extensions are the enabled lesiv.plant_extension flags (read-only for clients)
+SELECT p.id, p.name, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.is_deleted, p.server_modified_at,
+    p.created_by_user_id,
+    ARRAY(
+        SELECT pe.extension_type::text FROM lesiv.plant_extension pe WHERE pe.plant_id = p.id ORDER BY pe.extension_type
+    ) AS extensions
+FROM lesiv.plant p
+WHERE p.id = :id;
 
 -- name: get_by_id_with_username(id)^
 -- Get plant by ID with username of user who claimed it
@@ -19,6 +23,13 @@ SELECT id, name, facility_template_id, is_deleted
 FROM lesiv.facility
 WHERE plant_id = :plant_id
 ORDER BY name;
+
+-- name: get_sticker_type_ids(plant_id)
+-- Get sticker types explicitly permitted for a plant. No rows means unrestricted.
+SELECT sticker_type_id
+FROM lesiv.plant_sticker_type
+WHERE plant_id = :plant_id
+ORDER BY sticker_type_id;
 
 -- name: get_facility_ids(plant_id)
 -- Get facility IDs for a plant
@@ -41,11 +52,15 @@ WHERE id = :facility_id;
 -- name: get_all_plants(modified_since)
 -- Get all plants (lightweight list)
 -- :modified_since defaults to 1790-01-01 - only return plants modified after that timestamp
-SELECT id, name, is_deleted, claimed_by_device_id, claimed_by_user_id, claimed_at, server_modified_at,
-    created_by_user_id
-FROM lesiv.plant
-WHERE server_modified_at > :modified_since
-ORDER BY server_modified_at;
+-- extensions are the enabled lesiv.plant_extension flags (read-only for clients)
+SELECT p.id, p.name, p.is_deleted, p.claimed_by_device_id, p.claimed_by_user_id, p.claimed_at, p.server_modified_at,
+    p.created_by_user_id,
+    ARRAY(
+        SELECT pe.extension_type::text FROM lesiv.plant_extension pe WHERE pe.plant_id = p.id ORDER BY pe.extension_type
+    ) AS extensions
+FROM lesiv.plant p
+WHERE p.server_modified_at > :modified_since
+ORDER BY p.server_modified_at;
 
 -- name: upsert_plant(id, name, is_deleted, server_modified_at, created_by_user_id)!
 -- Insert or update plant (claim fields are managed separately via claim/release endpoints)
@@ -66,6 +81,17 @@ ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     facility_template_id = EXCLUDED.facility_template_id,
     is_deleted = EXCLUDED.is_deleted;
+
+-- name: upsert_plant_sticker_type(plant_id, sticker_type_id)!
+-- Add an explicitly permitted sticker type for a plant.
+INSERT INTO lesiv.plant_sticker_type (plant_id, sticker_type_id)
+VALUES (:plant_id, :sticker_type_id)
+ON CONFLICT (plant_id, sticker_type_id) DO NOTHING;
+
+-- name: delete_plant_sticker_type(plant_id, sticker_type_id)!
+-- Remove an explicitly permitted sticker type from a plant.
+DELETE FROM lesiv.plant_sticker_type
+WHERE plant_id = :plant_id AND sticker_type_id = :sticker_type_id;
 
 -- name: delete_plant(id)!
 -- Logically delete plant

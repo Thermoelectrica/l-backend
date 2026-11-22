@@ -106,6 +106,72 @@ def test_get_all_plants(client: TestClient, plant_data):
     assert str(plant_id_2) in plant_ids
 
 
+def test_plant_sticker_type_restriction_is_returned_but_not_in_list(client: TestClient, plant_data):
+    """PUT and GET /by_id expose configured sticker types, while /all stays lightweight."""
+    plant_data["sticker_type_ids"] = [1, 4]
+
+    put_response = client.put("/plant", json=plant_data)
+    assert put_response.status_code == 200
+    assert put_response.json()["sticker_type_ids"] == [1, 4]
+
+    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["sticker_type_ids"] == [1, 4]
+
+    list_response = client.get("/plant/all")
+    assert list_response.status_code == 200
+    plant_item = next(item for item in list_response.json()["items"] if item["id"] == plant_data["id"])
+    assert "sticker_type_ids" not in plant_item
+
+
+def test_plant_sticker_type_restriction_is_preserved_when_field_is_missing_or_null(client: TestClient, plant_data):
+    """Old PUT clients and explicit null leave an existing sticker type restriction unchanged."""
+    plant_data["sticker_type_ids"] = [1, 4]
+    created = client.put("/plant", json=plant_data)
+    assert created.status_code == 200
+
+    missing_field_data = created.json()
+    missing_field_data.pop("sticker_type_ids")
+    missing_field_data["name"] = "Updated without sticker types"
+    missing_response = client.put("/plant", json=missing_field_data)
+    assert missing_response.status_code == 200
+    assert missing_response.json()["sticker_type_ids"] == [1, 4]
+
+    null_field_data = missing_response.json()
+    null_field_data["sticker_type_ids"] = None
+    null_field_data["name"] = "Updated with null sticker types"
+    null_response = client.put("/plant", json=null_field_data)
+    assert null_response.status_code == 200
+    assert null_response.json()["sticker_type_ids"] == [1, 4]
+
+
+def test_empty_plant_sticker_type_restriction_clears_configured_types(client: TestClient, plant_data):
+    """An explicit empty sticker_type_ids list removes every plant restriction."""
+    plant_data["sticker_type_ids"] = [1, 4]
+    created = client.put("/plant", json=plant_data)
+    assert created.status_code == 200
+
+    clear_data = created.json()
+    clear_data["sticker_type_ids"] = []
+    cleared = client.put("/plant", json=clear_data)
+    assert cleared.status_code == 200
+    assert cleared.json()["sticker_type_ids"] == []
+
+    get_response = client.get(f"/plant/by_id/{plant_data['id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["sticker_type_ids"] == []
+
+
+def test_plant_sticker_type_restriction_rejects_unknown_type(client: TestClient, plant_data):
+    """PUT rejects a restriction containing a sticker type absent from the dictionary."""
+    plant_data["sticker_type_ids"] = [2_147_483_647]
+
+    response = client.put("/plant", json=plant_data)
+
+    assert response.status_code == 400
+    assert response.json()["type"] == "foreign_key_violation"
+
+
 def test_update_plant_with_correct_timestamp(client: TestClient, plant_data, facility_id_1):
     """Test updating a plant with correct server_modified_at"""
     create_response = client.put("/plant", json=plant_data)
@@ -739,3 +805,101 @@ def test_created_by_user_id_null_for_anonymous_create(client: TestClient, plant_
     get_response = client.get(f"/plant/by_id/{plant_id}")
     assert get_response.status_code == 200
     assert get_response.json()["created_by_user_id"] is None
+
+
+# ============================================================================
+# extensions (enabled lesiv.plant_extension flags)
+# ============================================================================
+
+
+async def _enable_extension(plant_id, extension_type="IESK"):
+    """Enable a plant extension directly in the DB (the app never writes lesiv.plant_extension)"""
+    import asyncpg
+
+    from app.config import settings
+
+    conn = await asyncpg.connect(settings.get_database_url())
+    try:
+        await conn.execute(
+            "INSERT INTO lesiv.plant_extension (plant_id, extension_type) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            plant_id,
+            extension_type,
+        )
+    finally:
+        await conn.close()
+
+
+def test_extensions_empty_for_regular_plant(client: TestClient, plant_data, plant_id):
+    """Ordinary plants expose extensions = [] in by_id and all"""
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == []
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert item["extensions"] == []
+
+
+async def test_extensions_iesk(client: TestClient, plant_data, plant_id):
+    """A plant with the IESK row in lesiv.plant_extension exposes extensions = ['IESK'] in by_id and all"""
+    client.put("/plant", json=plant_data)
+    await _enable_extension(plant_id)
+
+    response = client.get(f"/plant/by_id/{plant_id}")
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+    item = next(p for p in client.get("/plant/all").json()["items"] if p["id"] == str(plant_id))
+    assert item["extensions"] == ["IESK"]
+
+
+async def test_extensions_are_read_only(client: TestClient, plant_data, plant_id):
+    """extensions sent by the client in PUT /plant are ignored in both directions"""
+    created = client.put("/plant", json=plant_data).json()
+
+    # A client cannot enable an extension
+    created["extensions"] = ["IESK"]
+    updated = client.put("/plant", json=created).json()
+    assert updated["extensions"] == []
+
+    # ... nor disable it (old clients omit the field, new ones may send an empty list)
+    await _enable_extension(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    current["extensions"] = []
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+    del current["extensions"]
+    current["server_modified_at"] = response.json()["server_modified_at"]
+    response = client.put("/plant", json=current)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == ["IESK"]
+
+
+async def test_unknown_extensions_dropped(client: TestClient, plant_data, plant_id):
+    """Unknown extensions or garbage in PUT /plant are dropped instead of failing the request with 422"""
+    plant_data["extensions"] = ["SOME_FUTURE_EXTENSION"]
+    response = client.put("/plant", json=plant_data)
+    assert response.status_code == 200
+    assert response.json()["extensions"] == []
+
+    # The stored flags are not affected by whatever the client sends
+    await _enable_extension(plant_id)
+    current = client.get(f"/plant/by_id/{plant_id}").json()
+    for value in (["SOME_FUTURE_EXTENSION"], ["iesk", "IESK", "IESK"], "IESK", None, [123]):
+        current["extensions"] = value
+        response = client.put("/plant", json=current)
+        assert response.status_code == 200, value
+        assert response.json()["extensions"] == ["IESK"]
+        current["server_modified_at"] = response.json()["server_modified_at"]
+
+
+def test_extensions_validator_dedupes_and_filters():
+    """The input validator keeps known extensions once, in order, and drops everything else"""
+    from app.models.plant import Plant, PlantExtensionType
+
+    body = {"id": str(uuid4()), "name": "x", "server_modified_at": "2026-01-01T00:00:00Z"}
+    assert Plant.model_validate(body).extensions == []
+    assert Plant.model_validate({**body, "extensions": ["IESK", "nope", "IESK"]}).extensions == [
+        PlantExtensionType.IESK
+    ]
