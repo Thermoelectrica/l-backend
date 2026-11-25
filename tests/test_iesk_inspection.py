@@ -237,6 +237,38 @@ def test_safety_signs_optional(client: TestClient, iesk_inspection_data, iesk_in
     assert stored["safety_signs"] is None
 
 
+@pytest.mark.parametrize("value", ["UI", "QR", "NFC"])
+def test_input_by_roundtrip(client: TestClient, iesk_inspection_data, iesk_inspection_id, value):
+    """input_by accepts UI/QR/NFC and is returned from PUT and GET"""
+    iesk_inspection_data["input_by"] = value
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 200
+    assert response.json()["input_by"] == value
+
+    stored = client.get(f"/iesk-inspection/by_id/{iesk_inspection_id}").json()
+    assert stored["input_by"] == value
+
+
+def test_input_by_optional(client: TestClient, iesk_inspection_data, iesk_inspection_id):
+    """input_by may be omitted or null: it is stored as null"""
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 200
+    assert response.json()["input_by"] is None
+
+    iesk_inspection_data["input_by"] = None
+    iesk_inspection_data["server_modified_at"] = response.json()["server_modified_at"]
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 200
+    assert response.json()["input_by"] is None
+
+
+def test_input_by_invalid_value(client: TestClient, iesk_inspection_data):
+    """input_by outside UI/QR/NFC is rejected with 422"""
+    iesk_inspection_data["input_by"] = "MANUAL"
+    response = client.put("/iesk-inspection", json=iesk_inspection_data)
+    assert response.status_code == 422
+
+
 # ============================================================================
 # Optimistic locking
 # ============================================================================
