@@ -127,6 +127,7 @@ class IeskInspectionRepository:
             stickers=inspection.stickers,
             safety_signs=inspection.safety_signs,
             comment=inspection.comment,
+            input_by=inspection.input_by.value if inspection.input_by else None,
             is_deleted=inspection.is_deleted,
             server_modified_at=datetime.now(timezone.utc),
         )
