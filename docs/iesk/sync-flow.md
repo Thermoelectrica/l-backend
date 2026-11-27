@@ -32,6 +32,7 @@ erDiagram
         int stickers
         int safety_signs
         text comment
+        iesk_input_by input_by "UI, QR, NFC; nullable"
         bool is_deleted
         timestamptz server_modified_at
     }
@@ -185,6 +186,7 @@ sequenceDiagram
   "stickers": 3,
   "safety_signs": 1,
   "comment": "Течь масла не обнаружена",
+  "input_by": "QR",
   "is_deleted": false,
   "server_modified_at": "2026-11-19T08:31:12.345Z",
   "image_links": [{"image_id": "c3d2…", "is_deleted": false}]

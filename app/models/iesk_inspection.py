@@ -6,10 +6,19 @@ inspection step (see ImageLink in app.models.inspection).
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class IeskInputBy(str, Enum):
+    """How the inspection was entered on the device. Mirrors the PostgreSQL enum lesiv.iesk_input_by."""
+
+    UI = "UI"
+    QR = "QR"
+    NFC = "NFC"
 
 
 class IeskImageLink(BaseModel):
@@ -37,6 +46,7 @@ class IeskInspection(BaseModel):
     stickers: Optional[int] = None
     safety_signs: Optional[int] = None
     comment: Optional[str] = None
+    input_by: Optional[IeskInputBy] = None
     is_deleted: bool = False
     server_modified_at: datetime
     image_links: list[IeskImageLink] = Field(default_factory=list)
